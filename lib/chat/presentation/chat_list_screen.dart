@@ -46,9 +46,9 @@ class ChatListScreen extends ConsumerWidget {
         error: (err, stack) => _buildEmptyState(context),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _startNewChat(context),
+        onPressed: () => _showAddPartnerSheet(context),
         backgroundColor: Theme.of(context).colorScheme.primary,
-        child: const Icon(Icons.chat_bubble_outline, color: Colors.white),
+        child: const Icon(Icons.person_add_alt, color: Colors.white),
       ),
     );
   }
@@ -75,7 +75,7 @@ class ChatListScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Start a new chat with your partner',
+            'Tap + to find your partner',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
         ],
@@ -83,87 +83,233 @@ class ChatListScreen extends ConsumerWidget {
     );
   }
 
-  void _startNewChat(BuildContext context) {
-    final emailController = TextEditingController();
-    showDialog(
+  void _showAddPartnerSheet(BuildContext context) {
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('New Chat'),
-        content: TextField(
-          controller: emailController,
-          decoration: const InputDecoration(
-            labelText: "Partner's email",
-            hintText: 'Enter your partner email address',
-          ),
-          keyboardType: TextInputType.emailAddress,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _findOrCreateConversation(context, emailController.text.trim());
-            },
-            child: const Text('Start Chat'),
-          ),
-        ],
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      builder: (ctx) => const _FindPartnerSheet(),
     );
   }
+}
 
-  Future<void> _findOrCreateConversation(
-      BuildContext context, String partnerEmail) async {
+class _FindPartnerSheet extends ConsumerStatefulWidget {
+  const _FindPartnerSheet();
+
+  @override
+  ConsumerState<_FindPartnerSheet> createState() => _FindPartnerSheetState();
+}
+
+class _FindPartnerSheetState extends ConsumerState<_FindPartnerSheet> {
+  final _searchController = TextEditingController();
+  List<Map<String, dynamic>> _searchResults = [];
+  bool _isSearching = false;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _searchUsers(String query) async {
+    if (query.trim().length < 2) {
+      setState(() {
+        _searchResults = [];
+        _isSearching = false;
+      });
+      return;
+    }
+
+    setState(() => _isSearching = true);
+    final lowerQuery = query.trim().toLowerCase();
+    final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
+
     try {
       final snapshot = await FirebaseFirestore.instance
           .collection('users')
-          .where('email', isEqualTo: partnerEmail)
+          .where('usernameLower', isGreaterThanOrEqualTo: lowerQuery)
+          .where('usernameLower', isLessThanOrEqualTo: '$lowerQuery\uf8ff')
+          .limit(10)
           .get();
 
-      if (snapshot.docs.isEmpty) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('User not found')),
-          );
-        }
-        return;
-      }
-
-      final partnerId = snapshot.docs.first.id;
-      final currentUserId = FirebaseAuth.instance.currentUser!.uid;
-
-      if (partnerId == currentUserId) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('You cannot chat with yourself')),
-          );
-        }
-        return;
-      }
-
-      final chatService = ChatService();
-      final existingConversationId =
-          await chatService.findPartnerConversation(partnerId);
-
-      String conversationId;
-      if (existingConversationId != null) {
-        conversationId = existingConversationId;
-      } else {
-        conversationId = await chatService.createConversation(partnerId);
-      }
-
-      if (context.mounted) {
-        context.push('/chats/$conversationId');
+      if (mounted) {
+        setState(() {
+          _searchResults = snapshot.docs
+              .map((doc) => doc.data())
+              .where((data) => data['uid'] != currentUid)
+              .toList();
+          _isSearching = false;
+        });
       }
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
+      if (mounted) setState(() => _isSearching = false);
     }
+  }
+
+  Future<void> _startChat(Map<String, dynamic> partnerData) async {
+    final partnerId = partnerData['uid'] as String;
+    final chatService = ChatService();
+
+    final existingConversationId =
+        await chatService.findPartnerConversation(partnerId);
+
+    String conversationId;
+    if (existingConversationId != null) {
+      conversationId = existingConversationId;
+    } else {
+      conversationId = await chatService.createConversation(partnerId);
+    }
+
+    if (mounted) {
+      Navigator.pop(context);
+      context.push('/chats/$conversationId');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+        left: 16,
+        right: 16,
+        top: 16,
+      ),
+      child: DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.5,
+        maxChildSize: 0.9,
+        expand: false,
+        builder: (context, scrollController) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Find Your Partner',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Search by username to find and connect',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.6),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _searchController,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: 'Search username...',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _isSearching
+                      ? const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : null,
+                ),
+                onChanged: _searchUsers,
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: _searchResults.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.person_search,
+                              size: 48,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withValues(alpha: 0.3),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              _searchController.text.isEmpty
+                                  ? 'Type a username to search'
+                                  : 'No users found',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        controller: scrollController,
+                        itemCount: _searchResults.length,
+                        itemBuilder: (context, index) {
+                          final user = _searchResults[index];
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: Theme.of(context)
+                                    .colorScheme
+                                    .primaryContainer,
+                                child: Text(
+                                  (user['displayName'] as String? ?? '?')[0]
+                                      .toUpperCase(),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color:
+                                        Theme.of(context).colorScheme.primary,
+                                  ),
+                                ),
+                              ),
+                              title: Text(
+                                user['displayName'] as String? ?? 'Unknown',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              subtitle: Text(
+                                '@${user['username'] as String? ?? ''}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurface
+                                      .withValues(alpha: 0.6),
+                                ),
+                              ),
+                              trailing: FilledButton.tonalIcon(
+                                onPressed: () => _startChat(user),
+                                icon: const Icon(Icons.chat, size: 18),
+                                label: const Text('Chat'),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 }
 
@@ -213,12 +359,27 @@ class _ConversationTile extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     partnerData.when(
-                      data: (data) => Text(
-                        data?['displayName'] as String? ?? 'Partner',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 16,
-                        ),
+                      data: (data) => Row(
+                        children: [
+                          Text(
+                            data?['displayName'] as String? ?? 'Partner',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '@${data?['username'] as String? ?? ''}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withValues(alpha: 0.4),
+                            ),
+                          ),
+                        ],
                       ),
                       loading: () => const Text('Loading...'),
                       error: (_, _) => const Text('Partner'),
@@ -261,7 +422,9 @@ class _ConversationTile extends ConsumerWidget {
     final diff = now.difference(time);
     if (diff.inMinutes < 1) return 'now';
     if (diff.inHours < 1) return '${diff.inMinutes}m';
-    if (diff.inDays < 1) return '${time.hour}:${time.minute.toString().padLeft(2, '0')}';
+    if (diff.inDays < 1) {
+      return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    }
     if (diff.inDays == 1) return 'Yesterday';
     return '${time.day}/${time.month}';
   }

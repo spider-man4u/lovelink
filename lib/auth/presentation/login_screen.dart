@@ -14,57 +14,92 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _nameController = TextEditingController();
+  final _usernameController = TextEditingController();
   bool _isLogin = true;
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _usernameAvailable = true;
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
     _nameController.dispose();
+    _usernameController.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
     setState(() => _isLoading = true);
     try {
-      UserCredential credential;
       if (_isLogin) {
-        credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: _emailController.text.trim(),
           password: _passwordController.text,
         );
       } else {
-        credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+        if (_nameController.text.trim().isEmpty) {
+          _showError('Please enter your name');
+          return;
+        }
+        final username = _usernameController.text.trim().toLowerCase();
+        if (username.isEmpty) {
+          _showError('Please choose a username');
+          return;
+        }
+        if (!_usernameAvailable) {
+          _showError('Username is already taken');
+          return;
+        }
+
+        final credential =
+            await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: _emailController.text.trim(),
           password: _passwordController.text,
         );
         await credential.user?.updateDisplayName(
           _nameController.text.trim(),
         );
-        await _createUserProfile(credential.user!);
+        await _createUserProfile(credential.user!, username);
       }
       if (mounted) context.go('/chats');
     } on FirebaseAuthException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message ?? 'An error occurred')),
-        );
-      }
+      _showError(e.message ?? 'An error occurred');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _createUserProfile(User user) async {
+  Future<void> _createUserProfile(User user, String username) async {
     await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
       'uid': user.uid,
       'email': user.email,
       'displayName': _nameController.text.trim(),
+      'username': username,
+      'usernameLower': username.toLowerCase(),
       'isOnline': true,
       'createdAt': DateTime.now().toIso8601String(),
     });
+  }
+
+  Future<void> _checkUsername(String value) async {
+    if (value.trim().length < 3) return;
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .where('usernameLower', isEqualTo: value.trim().toLowerCase())
+        .get();
+    if (mounted) {
+      setState(() => _usernameAvailable = snapshot.docs.isEmpty);
+    }
+  }
+
+  void _showError(String message) {
+    if (mounted) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    }
   }
 
   @override
@@ -92,17 +127,32 @@ class _LoginScreenState extends State<LoginScreen> {
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: 48),
-              if (!_isLogin)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: TextField(
-                    controller: _nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Your Name',
-                      prefixIcon: Icon(Icons.person_outline),
-                    ),
+              if (!_isLogin) ...[
+                TextField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Your Name',
+                    prefixIcon: Icon(Icons.person_outline),
                   ),
                 ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _usernameController,
+                  decoration: InputDecoration(
+                    labelText: 'Username',
+                    hintText: 'Choose a unique username',
+                    prefixIcon: const Icon(Icons.alternate_email),
+                    suffixIcon: _usernameController.text.trim().length >= 3
+                        ? Icon(
+                            _usernameAvailable ? Icons.check_circle : Icons.cancel,
+                            color: _usernameAvailable ? Colors.green : Colors.red,
+                          )
+                        : null,
+                  ),
+                  onChanged: _checkUsername,
+                ),
+                const SizedBox(height: 16),
+              ],
               TextField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
@@ -120,9 +170,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   prefixIcon: const Icon(Icons.lock_outlined),
                   suffixIcon: IconButton(
                     icon: Icon(
-                      _obscurePassword
-                          ? Icons.visibility_off
-                          : Icons.visibility,
+                      _obscurePassword ? Icons.visibility_off : Icons.visibility,
                     ),
                     onPressed: () =>
                         setState(() => _obscurePassword = !_obscurePassword),
