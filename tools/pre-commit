@@ -1,0 +1,6 @@
+#!/bin/sh
+# Pre-commit hook: auto-bump version on every commit
+# Install: cp tools/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+dart run scripts/bump_version.dart
+git add pubspec.yaml 2>/dev/null
