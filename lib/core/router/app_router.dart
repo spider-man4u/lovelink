@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -9,10 +10,13 @@ import '../../chat/presentation/chat_screen.dart';
 import '../../memory/presentation/timeline_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
 
+final navigatorKey = GlobalKey<NavigatorState>();
+
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authStateProvider);
 
   return GoRouter(
+    navigatorKey: navigatorKey,
     initialLocation: '/splash',
     redirect: (context, state) {
       final isLoggedIn = authState.value != null;
