@@ -45,18 +45,21 @@ exports.sendMessageNotification = functions.firestore
       const senderData = senderSnap.data();
       const senderName = senderData?.displayName || senderData?.username || 'Partner';
 
-      // Get recipient's FCM token
+      // Get recipient's FCM tokens
       const recipientSnap = await db.collection('users').doc(recipientId).get();
       const recipientData = recipientSnap.data();
-      const fcmToken = recipientData?.fcmToken;
+      const tokens = [
+        ...(recipientData?.fcmTokens || []),
+        recipientData?.fcmToken,
+      ].filter(Boolean);
+      const fcmTokens = [...new Set(tokens)];
 
-      if (!fcmToken) {
+      if (fcmTokens.length === 0) {
         console.log('Recipient has no FCM token');
         return null;
       }
 
       const messagePayload = {
-        token: fcmToken,
         notification: {
           title: senderName,
           body: text,
@@ -88,8 +91,31 @@ exports.sendMessageNotification = functions.firestore
         },
       };
 
-      const response = await admin.messaging().send(messagePayload);
-      console.log('Notification sent successfully:', response);
+      const response = await admin.messaging().sendEachForMulticast({
+        ...messagePayload,
+        tokens: fcmTokens,
+      });
+      console.log(
+        `Notifications sent: ${response.successCount}, failed: ${response.failureCount}`,
+      );
+
+      const invalidTokens = [];
+      response.responses.forEach((result, index) => {
+        const code = result.error?.code;
+        if (
+          code === 'messaging/invalid-argument' ||
+          code === 'messaging/registration-token-not-registered'
+        ) {
+          invalidTokens.push(fcmTokens[index]);
+        }
+      });
+
+      if (invalidTokens.length > 0) {
+        await recipientSnap.ref.update({
+          fcmTokens: admin.firestore.FieldValue.arrayRemove(...invalidTokens),
+        });
+      }
+
       return response;
     } catch (error) {
       console.error('Error sending notification:', error);

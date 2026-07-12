@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,17 +7,24 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../firebase_options.dart';
 import '../router/app_router.dart';
 
 final notificationServiceProvider = Provider<NotificationService>((ref) {
   return NotificationService();
 });
 
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+}
+
 class NotificationService {
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
   String? _currentToken;
+  bool _initialized = false;
 
   final AndroidNotificationChannel _channel = const AndroidNotificationChannel(
     'lovelink_messages',
@@ -28,6 +36,11 @@ class NotificationService {
   );
 
   Future<void> initialize() async {
+    if (_initialized) return;
+    _initialized = true;
+
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+
     final settings = await _messaging.requestPermission(
       alert: true,
       badge: true,
@@ -40,8 +53,16 @@ class NotificationService {
       debugPrint('Notification permission granted');
     }
 
-    const androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+    await FirebaseMessaging.instance
+        .setForegroundNotificationPresentationOptions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: false,
       requestBadgePermission: false,
@@ -58,15 +79,21 @@ class NotificationService {
 
     await _localNotifications
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.createNotificationChannel(_channel);
 
-    _currentToken = await _messaging.getToken();
-    await _storeToken(_currentToken);
+    await _refreshAndStoreToken();
 
     _messaging.onTokenRefresh.listen((token) {
       _currentToken = token;
       _storeToken(token);
+    });
+
+    FirebaseAuth.instance.authStateChanges().listen((user) async {
+      if (user != null) {
+        await _refreshAndStoreToken();
+      }
     });
 
     FirebaseMessaging.onMessage.listen(_onForegroundMessage);
@@ -78,6 +105,11 @@ class NotificationService {
     }
   }
 
+  Future<void> _refreshAndStoreToken() async {
+    _currentToken = await _messaging.getToken();
+    await _storeToken(_currentToken);
+  }
+
   Future<void> _storeToken(String? token) async {
     if (token == null) return;
     final user = FirebaseAuth.instance.currentUser;
@@ -86,10 +118,12 @@ class NotificationService {
     await FirebaseFirestore.instance
         .collection('users')
         .doc(user.uid)
-        .update({
-      'fcmToken': token,
-      'fcmTokenUpdatedAt': FieldValue.serverTimestamp(),
-    }).catchError((_) {});
+        .set({
+          'fcmToken': token,
+          'fcmTokens': FieldValue.arrayUnion([token]),
+          'fcmTokenUpdatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true))
+        .catchError((_) {});
   }
 
   Future<void> _onForegroundMessage(RemoteMessage message) async {

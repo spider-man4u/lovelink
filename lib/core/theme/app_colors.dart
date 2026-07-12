@@ -14,7 +14,7 @@ class AppColors {
   static const secondaryLight = Color(0xFFE1BEE7);
 
   // Neutral
-  static const background = Color(0xFFFDF2F8);
+  static const background = Color(0xFFF8F8FA);
   static const surface = Colors.white;
   static const surfaceDark = Color(0xFF1A1A2E);
   static const backgroundDark = Color(0xFF0F0F23);

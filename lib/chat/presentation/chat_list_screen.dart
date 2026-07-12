@@ -43,7 +43,7 @@ class ChatListScreen extends ConsumerWidget {
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, stack) => _buildEmptyState(context),
+        error: (err, stack) => _buildErrorState(context, err),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showAddPartnerSheet(context),
@@ -67,11 +67,10 @@ class ChatListScreen extends ConsumerWidget {
           Text(
             'No conversations yet',
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: 0.6),
-                ),
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
           ),
           const SizedBox(height: 8),
           Text(
@@ -79,6 +78,43 @@ class ChatListScreen extends ConsumerWidget {
             style: Theme.of(context).textTheme.bodyMedium,
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState(BuildContext context, Object error) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.cloud_off_rounded,
+              size: 56,
+              color: Theme.of(context).colorScheme.error.withValues(alpha: 0.7),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Could not load conversations',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              error.toString(),
+              textAlign: TextAlign.center,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -170,8 +206,9 @@ class _FindPartnerSheetState extends ConsumerState<_FindPartnerSheet> {
     final partnerId = partnerData['uid'] as String;
     final chatService = ChatService();
 
-    final existingConversationId =
-        await chatService.findPartnerConversation(partnerId);
+    final existingConversationId = await chatService.findPartnerConversation(
+      partnerId,
+    );
 
     String conversationId;
     if (existingConversationId != null) {
@@ -221,13 +258,12 @@ class _FindPartnerSheetState extends ConsumerState<_FindPartnerSheet> {
               ),
               const SizedBox(height: 4),
               Text(
-                'Search by username to find and connect',
+                'Search by username or email to find and connect',
                 style: TextStyle(
                   fontSize: 13,
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: 0.6),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.6),
                 ),
               ),
               const SizedBox(height: 16),
@@ -235,7 +271,7 @@ class _FindPartnerSheetState extends ConsumerState<_FindPartnerSheet> {
                 controller: _searchController,
                 autofocus: true,
                 decoration: InputDecoration(
-                  hintText: 'Search username...',
+                  hintText: 'Search username or email...',
                   prefixIcon: const Icon(Icons.search),
                   suffixIcon: _isSearching
                       ? const Padding(
@@ -260,10 +296,9 @@ class _FindPartnerSheetState extends ConsumerState<_FindPartnerSheet> {
                             Icon(
                               Icons.person_search,
                               size: 48,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .primary
-                                  .withValues(alpha: 0.3),
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: 0.3),
                             ),
                             const SizedBox(height: 12),
                             Text(
@@ -284,16 +319,17 @@ class _FindPartnerSheetState extends ConsumerState<_FindPartnerSheet> {
                             margin: const EdgeInsets.only(bottom: 8),
                             child: ListTile(
                               leading: CircleAvatar(
-                                backgroundColor: Theme.of(context)
-                                    .colorScheme
-                                    .primaryContainer,
+                                backgroundColor: Theme.of(
+                                  context,
+                                ).colorScheme.primaryContainer,
                                 child: Text(
                                   (user['displayName'] as String? ?? '?')[0]
                                       .toUpperCase(),
                                   style: TextStyle(
                                     fontWeight: FontWeight.w600,
-                                    color:
-                                        Theme.of(context).colorScheme.primary,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
                                   ),
                                 ),
                               ),
@@ -309,9 +345,7 @@ class _FindPartnerSheetState extends ConsumerState<_FindPartnerSheet> {
                                     : user['email'] as String? ?? '',
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurface
+                                  color: Theme.of(context).colorScheme.onSurface
                                       .withValues(alpha: 0.6),
                                 ),
                               ),
@@ -358,8 +392,7 @@ class _ConversationTile extends ConsumerWidget {
             children: [
               CircleAvatar(
                 radius: 26,
-                backgroundColor:
-                    Theme.of(context).colorScheme.primaryContainer,
+                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
                 child: partnerData.when(
                   data: (data) => Text(
                     (data?['displayName'] as String? ?? 'P')[0].toUpperCase(),
@@ -392,13 +425,13 @@ class _ConversationTile extends ConsumerWidget {
                           Text(
                             data?['username'] != null
                                 ? '@${data!['username']}'
-                                : data?['email']?.toString().split('@').first ?? '',
+                                : data?['email']?.toString().split('@').first ??
+                                      '',
                             style: TextStyle(
                               fontSize: 12,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurface
-                                  .withValues(alpha: 0.4),
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurface.withValues(alpha: 0.4),
                             ),
                           ),
                         ],
@@ -413,10 +446,9 @@ class _ConversationTile extends ConsumerWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 13,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.6),
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
                     ),
                   ],
@@ -426,10 +458,9 @@ class _ConversationTile extends ConsumerWidget {
                 _formatTime(conversation.updatedAt),
                 style: TextStyle(
                   fontSize: 11,
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: 0.4),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.4),
                 ),
               ),
             ],

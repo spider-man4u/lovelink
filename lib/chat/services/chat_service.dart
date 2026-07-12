@@ -23,11 +23,21 @@ class ChatService {
   }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> getMessages(
-      String conversationId) {
+    String conversationId,
+  ) {
     return _firestore
         .collection('messages')
         .where('conversationId', isEqualTo: conversationId)
         .orderBy('timestamp', descending: false)
+        .snapshots();
+  }
+
+  Stream<DocumentSnapshot<Map<String, dynamic>>> getConversation(
+    String conversationId,
+  ) {
+    return _firestore
+        .collection('conversations')
+        .doc(conversationId)
         .snapshots();
   }
 
@@ -70,15 +80,32 @@ class ChatService {
   Future<String> createConversation(String partnerId) async {
     final conversationId = _uuid.v4();
     final userId = currentUserId!;
+    final now = Timestamp.fromDate(DateTime.now());
 
     await _firestore.collection('conversations').doc(conversationId).set({
       'id': conversationId,
       'participants': [userId, partnerId],
-      'createdAt': Timestamp.fromDate(DateTime.now()),
-      'updatedAt': Timestamp.fromDate(DateTime.now()),
+      'lastMessage': {
+        'text': 'Connected on LoveLink',
+        'senderId': userId,
+        'timestamp': now,
+      },
+      'createdAt': now,
+      'updatedAt': now,
     });
 
     return conversationId;
+  }
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> getRecentConversations() {
+    final uid = currentUserId;
+    if (uid == null) return const Stream.empty();
+
+    // Fallback for projects where the composite index is not deployed yet.
+    return _firestore
+        .collection('conversations')
+        .where('participants', arrayContains: uid)
+        .snapshots();
   }
 
   Stream<bool> getTypingStatus(String conversationId, String userId) {
@@ -103,8 +130,7 @@ class ChatService {
         .set({'isTyping': isTyping, 'userId': userId});
   }
 
-  Future<void> markAsRead(
-      String conversationId, String messageId) async {
+  Future<void> markAsRead(String conversationId, String messageId) async {
     final userId = currentUserId;
     if (userId == null) return;
 
@@ -130,8 +156,10 @@ class ChatService {
   }
 
   Stream<Map<String, dynamic>?> getUserData(String uid) {
-    return _firestore.collection('users').doc(uid).snapshots().map(
-          (snap) => snap.data(),
-        );
+    return _firestore
+        .collection('users')
+        .doc(uid)
+        .snapshots()
+        .map((snap) => snap.data());
   }
 }

@@ -10,36 +10,56 @@ final chatServiceProvider = Provider<ChatService>((ref) {
 
 final conversationsProvider = StreamProvider<List<ConversationModel>>((ref) {
   final chatService = ref.watch(chatServiceProvider);
-  return chatService.getConversations().map((snapshot) {
-    return snapshot.docs.map((doc) {
+  return chatService.getRecentConversations().map((snapshot) {
+    final conversations = snapshot.docs.map((doc) {
       return ConversationModel.fromJson(doc.data());
+    }).toList();
+
+    conversations.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return conversations;
+  });
+});
+
+final messagesProvider = StreamProvider.family<List<MessageModel>, String>((
+  ref,
+  conversationId,
+) {
+  final chatService = ref.watch(chatServiceProvider);
+  return chatService.getMessages(conversationId).map((snapshot) {
+    return snapshot.docs.map((doc) {
+      return MessageModel.fromJson(doc.data());
     }).toList();
   });
 });
 
-final messagesProvider = StreamProvider.family<List<MessageModel>, String>(
-  (ref, conversationId) {
-    final chatService = ref.watch(chatServiceProvider);
-    return chatService.getMessages(conversationId).map((snapshot) {
-      return snapshot.docs.map((doc) {
-        return MessageModel.fromJson(doc.data());
-      }).toList();
-    });
-  },
-);
-
 final typingStatusProvider =
-    StreamProvider.family<bool, ({String conversationId, String userId})>(
-  (ref, params) {
-    final chatService = ref.watch(chatServiceProvider);
-    return chatService.getTypingStatus(params.conversationId, params.userId);
-  },
-);
+    StreamProvider.family<bool, ({String conversationId, String userId})>((
+      ref,
+      params,
+    ) {
+      final chatService = ref.watch(chatServiceProvider);
+      return chatService.getTypingStatus(params.conversationId, params.userId);
+    });
 
 final partnerDataProvider =
-    StreamProvider.family<Map<String, dynamic>?, String>(
-  (ref, uid) {
-    final chatService = ref.watch(chatServiceProvider);
-    return chatService.getUserData(uid);
-  },
-);
+    StreamProvider.family<Map<String, dynamic>?, String>((ref, uid) {
+      final chatService = ref.watch(chatServiceProvider);
+      return chatService.getUserData(uid);
+    });
+
+final partnerIdProvider = StreamProvider.family<String, String>((
+  ref,
+  conversationId,
+) {
+  final chatService = ref.watch(chatServiceProvider);
+  final currentUserId = chatService.currentUserId;
+  return chatService.getConversation(conversationId).map((snapshot) {
+    final data = snapshot.data();
+    if (data == null) return '';
+    final conversation = ConversationModel.fromJson(data);
+    return conversation.participants.firstWhere(
+      (id) => id != currentUserId,
+      orElse: () => '',
+    );
+  });
+});

@@ -28,6 +28,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _memoryService = MemoryService();
   final _currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
   bool _isAnalyzing = false;
+  bool _hasText = false;
 
   @override
   void dispose() {
@@ -54,6 +55,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (text.isEmpty) return;
 
     _textController.clear();
+    setState(() => _hasText = false);
+    await _chatService.setTypingStatus(widget.conversationId, false);
     await _chatService.sendMessage(
       conversationId: widget.conversationId,
       text: text,
@@ -99,6 +102,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final messagesAsync = ref.watch(messagesProvider(widget.conversationId));
     final sceneState = ref.watch(sceneProvider);
     final moodState = ref.watch(moodProvider);
+    final partnerIdAsync = ref.watch(partnerIdProvider(widget.conversationId));
 
     return Scaffold(
       appBar: AppBar(
@@ -106,43 +110,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.pop(),
         ),
-        title: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: const Icon(Icons.person, size: 20),
-            ),
-            const SizedBox(width: 10),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Partner', style: TextStyle(fontSize: 16)),
-                Row(
-                  children: [
-                    const Icon(Icons.lock, size: 12, color: Colors.green),
-                    const SizedBox(width: 4),
-                    const Text('Encrypted',
-                        style: TextStyle(fontSize: 11, color: Colors.green)),
-                    if (moodState.currentMood != 'neutral') ...[
-                      const SizedBox(width: 8),
-                      Text(
-                        moodState.currentMood,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: _moodColor(moodState.currentMood),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-            ),
-          ],
+        title: partnerIdAsync.when(
+          data: (partnerId) => _ChatHeader(
+            partnerId: partnerId,
+            conversationId: widget.conversationId,
+            currentMood: moodState.currentMood,
+            moodColor: _moodColor(moodState.currentMood),
+          ),
+          loading: () => const _ChatHeaderSkeleton(),
+          error: (_, _) => const _ChatHeaderSkeleton(),
         ),
         actions: [
           if (_isAnalyzing)
@@ -171,8 +147,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 });
                 return ListView.builder(
                   controller: _scrollController,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     final message = messages[index];
@@ -202,7 +180,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Material(
         borderRadius: BorderRadius.circular(12),
-        color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+        color: Theme.of(
+          context,
+        ).colorScheme.primaryContainer.withValues(alpha: 0.3),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: () => _showSceneImages(scene),
@@ -214,10 +194,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primary
-                        .withValues(alpha: 0.1),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
@@ -242,18 +221,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         '${_emotionLabel(scene.emotion)} ${scene.time ?? ''} ${scene.weather ?? ''}',
                         style: TextStyle(
                           fontSize: 11,
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.6),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.6),
                         ),
                       ),
                     ],
                   ),
                 ),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.primary,
                     borderRadius: BorderRadius.circular(12),
@@ -313,26 +293,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 controller: _textController,
                 textCapitalization: TextCapitalization.sentences,
                 decoration: InputDecoration(
-                  hintText: 'Type a message...',
+                  hintText: 'Message...',
                   filled: true,
-                  fillColor: Theme.of(context)
-                      .colorScheme
-                      .surfaceContainerHighest
-                      .withValues(alpha: 0.5),
+                  fillColor: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(26),
                     borderSide: BorderSide.none,
                   ),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 12,
+                  ),
                 ),
                 maxLines: 4,
                 minLines: 1,
                 onChanged: (value) {
-                  _chatService.setTypingStatus(
-                    widget.conversationId,
-                    value.isNotEmpty,
-                  );
+                  final hasText = value.trim().isNotEmpty;
+                  if (_hasText != hasText) {
+                    setState(() => _hasText = hasText);
+                  }
+                  _chatService.setTypingStatus(widget.conversationId, hasText);
                 },
                 onSubmitted: (_) => _sendMessage(),
               ),
@@ -344,13 +326,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             const SizedBox(width: 4),
             Consumer(
               builder: (context, ref, child) {
-                return IconButton(
-                  icon: const Icon(Icons.send_rounded),
-                  style: IconButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.primary,
-                    foregroundColor: Colors.white,
+                return AnimatedScale(
+                  scale: _hasText ? 1 : 0.92,
+                  duration: const Duration(milliseconds: 160),
+                  curve: Curves.easeOut,
+                  child: IconButton(
+                    icon: const Icon(Icons.send_rounded),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Colors.white,
+                    ),
+                    onPressed: _hasText ? _sendMessage : null,
                   ),
-                  onPressed: _sendMessage,
                 );
               },
             ),
@@ -434,7 +421,10 @@ class _SceneImageSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final imagesAsync = ref.watch(
-      sceneImagesProvider({'scene': sceneName, 'tags': [sceneName]}),
+      sceneImagesProvider({
+        'scene': sceneName,
+        'tags': [sceneName],
+      }),
     );
 
     return DraggableScrollableSheet(
@@ -475,24 +465,26 @@ class _SceneImageSheet extends ConsumerWidget {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.image_search,
-                                size: 48,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .primary
-                                    .withValues(alpha: 0.3)),
+                            Icon(
+                              Icons.image_search,
+                              size: 48,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: 0.3),
+                            ),
                             const SizedBox(height: 12),
-                            Text('No images yet for "$sceneName"',
-                                style: Theme.of(context).textTheme.bodyMedium),
+                            Text(
+                              'No images yet for "$sceneName"',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
                             const SizedBox(height: 4),
                             Text(
                               'Add images in the admin panel',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurface
-                                    .withValues(alpha: 0.4),
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurface.withValues(alpha: 0.4),
                               ),
                             ),
                           ],
@@ -503,10 +495,10 @@ class _SceneImageSheet extends ConsumerWidget {
                       controller: scrollController,
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        crossAxisSpacing: 8,
-                        mainAxisSpacing: 8,
-                      ),
+                            crossAxisCount: 2,
+                            crossAxisSpacing: 8,
+                            mainAxisSpacing: 8,
+                          ),
                       itemCount: images.length,
                       itemBuilder: (context, index) {
                         final image = images[index];
@@ -533,8 +525,10 @@ class _SceneImageSheet extends ConsumerWidget {
                       },
                     );
                   },
-                  loading: () => const Center(child: CircularProgressIndicator()),
-                  error: (_, _) => const Center(child: Text('Failed to load images')),
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (_, _) =>
+                      const Center(child: Text('Failed to load images')),
                 ),
               ),
             ],
@@ -545,24 +539,168 @@ class _SceneImageSheet extends ConsumerWidget {
   }
 }
 
+class _ChatHeader extends ConsumerWidget {
+  final String partnerId;
+  final String conversationId;
+  final String currentMood;
+  final Color moodColor;
+
+  const _ChatHeader({
+    required this.partnerId,
+    required this.conversationId,
+    required this.currentMood,
+    required this.moodColor,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final partnerData = ref.watch(partnerDataProvider(partnerId));
+    final typingStatus = ref.watch(
+      typingStatusProvider((conversationId: conversationId, userId: partnerId)),
+    );
+
+    return partnerData.when(
+      data: (data) {
+        final name = data?['displayName'] as String? ?? 'Partner';
+        final initial = name.isNotEmpty ? name[0].toUpperCase() : 'P';
+        final subtitle = typingStatus.value == true
+            ? 'Typing...'
+            : 'End-to-end Encrypted';
+
+        return Row(
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.primaryContainer,
+                  child: Text(
+                    initial,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: -1,
+                  bottom: -1,
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: Colors.green,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Theme.of(context).scaffoldBackgroundColor,
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      Icon(
+                        typingStatus.value == true
+                            ? Icons.more_horiz
+                            : Icons.lock,
+                        size: 12,
+                        color: typingStatus.value == true
+                            ? Colors.blue
+                            : Colors.green,
+                      ),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: typingStatus.value == true
+                                ? Colors.blue
+                                : Colors.green,
+                          ),
+                        ),
+                      ),
+                      if (currentMood != 'neutral') ...[
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            currentMood,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 11, color: moodColor),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+      loading: () => const _ChatHeaderSkeleton(),
+      error: (_, _) => const _ChatHeaderSkeleton(),
+    );
+  }
+}
+
+class _ChatHeaderSkeleton extends StatelessWidget {
+  const _ChatHeaderSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      children: [
+        CircleAvatar(radius: 18, child: Icon(Icons.person, size: 18)),
+        SizedBox(width: 10),
+        Text(
+          'Partner',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
+      ],
+    );
+  }
+}
+
 class _MessageBubble extends StatelessWidget {
   final MessageModel message;
   final bool isSentByMe;
 
-  const _MessageBubble({
-    required this.message,
-    required this.isSentByMe,
-  });
+  const _MessageBubble({required this.message, required this.isSentByMe});
 
   @override
   Widget build(BuildContext context) {
     final isImage = message.type == 'image';
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
-        crossAxisAlignment:
-            isSentByMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        crossAxisAlignment: isSentByMe
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
         children: [
           Container(
             constraints: BoxConstraints(
@@ -573,13 +711,23 @@ class _MessageBubble extends StatelessWidget {
                   ? Theme.of(context).colorScheme.primary
                   : Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(18),
-                topRight: const Radius.circular(18),
-                bottomLeft: Radius.circular(isSentByMe ? 18 : 4),
-                bottomRight: Radius.circular(isSentByMe ? 4 : 18),
+                topLeft: const Radius.circular(16),
+                topRight: const Radius.circular(16),
+                bottomLeft: Radius.circular(isSentByMe ? 16 : 5),
+                bottomRight: Radius.circular(isSentByMe ? 5 : 16),
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-            padding: EdgeInsets.all(isImage ? 4 : 14),
+            padding: EdgeInsets.symmetric(
+              horizontal: isImage ? 4 : 16,
+              vertical: isImage ? 4 : 12,
+            ),
             child: isImage
                 ? ClipRRect(
                     borderRadius: BorderRadius.circular(14),
@@ -594,6 +742,8 @@ class _MessageBubble extends StatelessWidget {
                     style: TextStyle(
                       color: isSentByMe ? Colors.white : null,
                       fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      height: 1.35,
                     ),
                   ),
           ),
@@ -604,27 +754,23 @@ class _MessageBubble extends StatelessWidget {
               Text(
                 _formatTime(message.timestamp),
                 style: TextStyle(
-                  fontSize: 11,
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: 0.5),
+                  fontSize: 10,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.5),
                 ),
               ),
               if (isSentByMe)
                 Padding(
                   padding: const EdgeInsets.only(left: 4),
                   child: Icon(
-                    message.readBy.length > 1
-                        ? Icons.done_all
-                        : Icons.done,
+                    message.readBy.length > 1 ? Icons.done_all : Icons.done,
                     size: 14,
                     color: message.readBy.length > 1
                         ? Colors.blue
-                        : Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.4),
+                        : Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.4),
                   ),
                 ),
             ],
