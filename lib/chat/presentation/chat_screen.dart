@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 
@@ -563,9 +564,9 @@ class _ChatHeader extends ConsumerWidget {
       data: (data) {
         final name = data?['displayName'] as String? ?? 'Partner';
         final initial = name.isNotEmpty ? name[0].toUpperCase() : 'P';
-        final subtitle = typingStatus.value == true
-            ? 'Typing...'
-            : 'End-to-end Encrypted';
+        final isTyping = typingStatus.value == true;
+        final isOnline = data?['isOnline'] == true;
+        final subtitle = isTyping ? 'Typing...' : _presenceLabel(data);
 
         return Row(
           children: [
@@ -592,7 +593,7 @@ class _ChatHeader extends ConsumerWidget {
                     width: 10,
                     height: 10,
                     decoration: BoxDecoration(
-                      color: Colors.green,
+                      color: isOnline ? Colors.green : Colors.grey,
                       shape: BoxShape.circle,
                       border: Border.all(
                         color: Theme.of(context).scaffoldBackgroundColor,
@@ -620,13 +621,19 @@ class _ChatHeader extends ConsumerWidget {
                   Row(
                     children: [
                       Icon(
-                        typingStatus.value == true
+                        isTyping
                             ? Icons.more_horiz
-                            : Icons.lock,
+                            : isOnline
+                            ? Icons.circle
+                            : Icons.schedule,
                         size: 12,
-                        color: typingStatus.value == true
+                        color: isTyping
                             ? Colors.blue
-                            : Colors.green,
+                            : isOnline
+                            ? Colors.green
+                            : Theme.of(
+                                context,
+                              ).colorScheme.onSurface.withValues(alpha: 0.55),
                       ),
                       const SizedBox(width: 4),
                       Flexible(
@@ -636,9 +643,12 @@ class _ChatHeader extends ConsumerWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 11,
-                            color: typingStatus.value == true
+                            color: isTyping
                                 ? Colors.blue
-                                : Colors.green,
+                                : isOnline
+                                ? Colors.green
+                                : Theme.of(context).colorScheme.onSurface
+                                      .withValues(alpha: 0.55),
                           ),
                         ),
                       ),
@@ -664,6 +674,30 @@ class _ChatHeader extends ConsumerWidget {
       loading: () => const _ChatHeaderSkeleton(),
       error: (_, _) => const _ChatHeaderSkeleton(),
     );
+  }
+
+  String _presenceLabel(Map<String, dynamic>? data) {
+    if (data?['isOnline'] == true) return 'Online';
+
+    final rawLastSeen = data?['lastSeen'];
+    final lastSeen = rawLastSeen is Timestamp
+        ? rawLastSeen.toDate()
+        : rawLastSeen is String
+        ? DateTime.tryParse(rawLastSeen)
+        : null;
+
+    if (lastSeen == null) return 'End-to-end Encrypted';
+
+    final diff = DateTime.now().difference(lastSeen);
+    if (diff.inMinutes < 1) return 'Last seen just now';
+    if (diff.inHours < 1) return 'Last seen ${diff.inMinutes}m ago';
+    if (diff.inDays < 1) {
+      final hour = lastSeen.hour.toString().padLeft(2, '0');
+      final minute = lastSeen.minute.toString().padLeft(2, '0');
+      return 'Last seen today at $hour:$minute';
+    }
+    if (diff.inDays == 1) return 'Last seen yesterday';
+    return 'Last seen ${lastSeen.day}/${lastSeen.month}/${lastSeen.year}';
   }
 }
 
@@ -747,7 +781,7 @@ class _MessageBubble extends StatelessWidget {
                     ),
                   ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 3),
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -761,16 +795,38 @@ class _MessageBubble extends StatelessWidget {
                 ),
               ),
               if (isSentByMe)
-                Padding(
-                  padding: const EdgeInsets.only(left: 4),
-                  child: Icon(
-                    message.readBy.length > 1 ? Icons.done_all : Icons.done,
-                    size: 14,
-                    color: message.readBy.length > 1
-                        ? Colors.blue
-                        : Theme.of(
-                            context,
-                          ).colorScheme.onSurface.withValues(alpha: 0.4),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  child: Padding(
+                    key: ValueKey(message.readBy.length > 1),
+                    padding: const EdgeInsets.only(left: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          message.readBy.length > 1
+                              ? Icons.done_all
+                              : Icons.done,
+                          size: 14,
+                          color: message.readBy.length > 1
+                              ? Colors.blue
+                              : Theme.of(
+                                  context,
+                                ).colorScheme.onSurface.withValues(alpha: 0.4),
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          message.readBy.length > 1 ? 'Read' : 'Sent',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: message.readBy.length > 1
+                                ? Colors.blue
+                                : Theme.of(context).colorScheme.onSurface
+                                      .withValues(alpha: 0.45),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
             ],

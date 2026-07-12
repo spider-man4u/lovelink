@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/providers/theme_provider.dart';
+import '../../core/services/presence_service.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -52,8 +53,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _editUsername() async {
-    final controller =
-        TextEditingController(text: _userData?['username'] as String? ?? '');
+    final controller = TextEditingController(
+      text: _userData?['username'] as String? ?? '',
+    );
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -83,15 +85,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
-        'username': result,
-        'usernameLower': result.toLowerCase(),
-      });
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).update(
+        {'username': result, 'usernameLower': result.toLowerCase()},
+      );
       await _loadUserData();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Username updated!')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Username updated!')));
       }
     }
   }
@@ -110,14 +111,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Sign Out',
-                style: TextStyle(color: Colors.white)),
+            child: const Text(
+              'Sign Out',
+              style: TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
     );
 
     if (confirmed == true) {
+      await PresenceService.instance.setOffline();
       await FirebaseAuth.instance.signOut();
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
@@ -148,10 +152,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 children: [
                   CircleAvatar(
                     radius: 28,
-                    backgroundColor:
-                        Theme.of(context).colorScheme.primaryContainer,
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.primaryContainer,
                     child: Text(
-                      (FirebaseAuth.instance.currentUser?.displayName ?? 'U')[0],
+                      (FirebaseAuth.instance.currentUser?.displayName ??
+                          'U')[0],
                       style: TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w600,
@@ -182,9 +188,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                     : email.split('@').first,
                                 style: TextStyle(
                                   fontSize: 13,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurface
+                                  color: Theme.of(context).colorScheme.onSurface
                                       .withValues(alpha: 0.6),
                                 ),
                               ),
@@ -192,10 +196,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               Icon(
                                 Icons.edit,
                                 size: 14,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .primary
-                                    .withValues(alpha: 0.6),
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.primary.withValues(alpha: 0.6),
                               ),
                             ],
                           ),
@@ -211,10 +214,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
           Text(
             'Scene Suggestions',
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(fontWeight: FontWeight.w600),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           Card(
@@ -257,10 +259,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
           Text(
             'Appearance',
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(fontWeight: FontWeight.w600),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           Card(
@@ -277,10 +278,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
           Text(
             'Privacy & Data',
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(fontWeight: FontWeight.w600),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           Card(
@@ -307,10 +307,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
           Text(
             'About',
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(fontWeight: FontWeight.w600),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           Card(

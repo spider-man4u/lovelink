@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/services/presence_service.dart';
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -37,6 +39,7 @@ class _LoginScreenState extends State<LoginScreen> {
           email: _emailController.text.trim(),
           password: _passwordController.text,
         );
+        await PresenceService.instance.setOnline();
       } else {
         if (_nameController.text.trim().isEmpty) {
           _showError('Please enter your name');
@@ -52,15 +55,14 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
 
-        final credential =
-            await FirebaseAuth.instance.createUserWithEmailAndPassword(
-          email: _emailController.text.trim(),
-          password: _passwordController.text,
-        );
-        await credential.user?.updateDisplayName(
-          _nameController.text.trim(),
-        );
+        final credential = await FirebaseAuth.instance
+            .createUserWithEmailAndPassword(
+              email: _emailController.text.trim(),
+              password: _passwordController.text,
+            );
+        await credential.user?.updateDisplayName(_nameController.text.trim());
         await _createUserProfile(credential.user!, username);
+        await PresenceService.instance.setOnline();
       }
       if (mounted) context.go('/chats');
     } on FirebaseAuthException catch (e) {
@@ -78,6 +80,7 @@ class _LoginScreenState extends State<LoginScreen> {
       'username': username,
       'usernameLower': username.toLowerCase(),
       'isOnline': true,
+      'lastActiveAt': FieldValue.serverTimestamp(),
       'createdAt': DateTime.now().toIso8601String(),
     });
   }
@@ -96,9 +99,9 @@ class _LoginScreenState extends State<LoginScreen> {
   void _showError(String message) {
     if (mounted) {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -144,8 +147,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     prefixIcon: const Icon(Icons.alternate_email),
                     suffixIcon: _usernameController.text.trim().length >= 3
                         ? Icon(
-                            _usernameAvailable ? Icons.check_circle : Icons.cancel,
-                            color: _usernameAvailable ? Colors.green : Colors.red,
+                            _usernameAvailable
+                                ? Icons.check_circle
+                                : Icons.cancel,
+                            color: _usernameAvailable
+                                ? Colors.green
+                                : Colors.red,
                           )
                         : null,
                   ),
@@ -170,7 +177,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   prefixIcon: const Icon(Icons.lock_outlined),
                   suffixIcon: IconButton(
                     icon: Icon(
-                      _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                      _obscurePassword
+                          ? Icons.visibility_off
+                          : Icons.visibility,
                     ),
                     onPressed: () =>
                         setState(() => _obscurePassword = !_obscurePassword),
