@@ -97,6 +97,94 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  Future<void> _editProfile() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final nameController = TextEditingController(
+      text: user.displayName ?? _userData?['displayName'] as String? ?? '',
+    );
+    final usernameController = TextEditingController(
+      text: _userData?['username'] as String? ?? '',
+    );
+
+    final result = await showDialog<({String name, String username})>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit Profile'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Display name',
+                prefixIcon: Icon(Icons.person_outline),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: usernameController,
+              decoration: const InputDecoration(
+                labelText: 'Username',
+                prefixIcon: Icon(Icons.alternate_email),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, (
+              name: nameController.text.trim(),
+              username: usernameController.text.trim().toLowerCase(),
+            )),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null) return;
+    if (result.name.isEmpty || result.username.length < 3) {
+      _showSnack('Name and username are required');
+      return;
+    }
+
+    final currentUsername = _userData?['username'] as String?;
+    if (result.username != currentUsername) {
+      final taken = await FirebaseFirestore.instance
+          .collection('users')
+          .where('usernameLower', isEqualTo: result.username)
+          .get();
+      if (taken.docs.isNotEmpty) {
+        _showSnack('Username is already taken');
+        return;
+      }
+    }
+
+    await user.updateDisplayName(result.name);
+    await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+      'displayName': result.name,
+      'username': result.username,
+      'usernameLower': result.username,
+      'profileUpdatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    await _loadUserData();
+    _showSnack('Profile updated');
+  }
+
+  void _showSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _signOut() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -205,6 +293,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         ),
                       ],
                     ),
+                  ),
+                  IconButton(
+                    tooltip: 'Edit profile',
+                    onPressed: _editProfile,
+                    icon: const Icon(Icons.edit_outlined),
                   ),
                 ],
               ),

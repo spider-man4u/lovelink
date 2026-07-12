@@ -2,6 +2,8 @@ class ConversationModel {
   final String id;
   final List<String> participants;
   final LastMessage? lastMessage;
+  final List<String> pinnedBy;
+  final List<String> hiddenFor;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -9,6 +11,8 @@ class ConversationModel {
     required this.id,
     required this.participants,
     this.lastMessage,
+    this.pinnedBy = const [],
+    this.hiddenFor = const [],
     required this.createdAt,
     required this.updatedAt,
   });
@@ -20,6 +24,12 @@ class ConversationModel {
       lastMessage: json['lastMessage'] != null
           ? LastMessage.fromJson(json['lastMessage'] as Map<String, dynamic>)
           : null,
+      pinnedBy: json['pinnedBy'] != null
+          ? List<String>.from(json['pinnedBy'] as List)
+          : [],
+      hiddenFor: json['hiddenFor'] != null
+          ? List<String>.from(json['hiddenFor'] as List)
+          : [],
       createdAt: (json['createdAt'] as dynamic).toDate() is DateTime
           ? (json['createdAt'] as dynamic).toDate()
           : DateTime.parse(json['createdAt'] as String),
@@ -30,12 +40,14 @@ class ConversationModel {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'participants': participants,
-        'lastMessage': lastMessage?.toJson(),
-        'createdAt': createdAt.toIso8601String(),
-        'updatedAt': updatedAt.toIso8601String(),
-      };
+    'id': id,
+    'participants': participants,
+    'lastMessage': lastMessage?.toJson(),
+    'pinnedBy': pinnedBy,
+    'hiddenFor': hiddenFor,
+    'createdAt': createdAt.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
+  };
 }
 
 class LastMessage {
@@ -51,15 +63,15 @@ class LastMessage {
       senderId: json['senderId'] as String?,
       timestamp: json['timestamp'] != null
           ? (json['timestamp'] as dynamic).toDate() is DateTime
-              ? (json['timestamp'] as dynamic).toDate()
-              : DateTime.parse(json['timestamp'] as String)
+                ? (json['timestamp'] as dynamic).toDate()
+                : DateTime.parse(json['timestamp'] as String)
           : null,
     );
   }
 
   Map<String, dynamic> toJson() => {
-        if (text != null) 'text': text,
-        if (senderId != null) 'senderId': senderId,
-        if (timestamp != null) 'timestamp': timestamp?.toIso8601String(),
-      };
+    if (text != null) 'text': text,
+    if (senderId != null) 'senderId': senderId,
+    if (timestamp != null) 'timestamp': timestamp?.toIso8601String(),
+  };
 }

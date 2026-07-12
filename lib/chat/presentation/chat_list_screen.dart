@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/services.dart';
 
 import '../services/chat_service.dart';
 import '../providers/chat_providers.dart';
@@ -378,14 +379,25 @@ class _ConversationTile extends ConsumerWidget {
       (id) => id != FirebaseAuth.instance.currentUser?.uid,
       orElse: () => '',
     );
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    final isPinned =
+        currentUserId != null && conversation.pinnedBy.contains(currentUserId);
 
     final partnerData = ref.watch(partnerDataProvider(otherUserId));
+    final unreadCountAsync = ref.watch(unreadCountProvider(conversation));
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () => context.push('/chats/${conversation.id}'),
+        onLongPress: () => _showConversationActions(
+          context,
+          ref,
+          conversation,
+          partnerData.valueOrNull,
+          isPinned,
+        ),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(
@@ -414,24 +426,43 @@ class _ConversationTile extends ConsumerWidget {
                     partnerData.when(
                       data: (data) => Row(
                         children: [
-                          Text(
-                            data?['displayName'] as String? ?? 'Partner',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 16,
+                          Flexible(
+                            child: Text(
+                              data?['displayName'] as String? ?? 'Partner',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 16,
+                              ),
                             ),
                           ),
+                          if (isPinned) ...[
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.push_pin,
+                              size: 13,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ],
                           const SizedBox(width: 6),
-                          Text(
-                            data?['username'] != null
-                                ? '@${data!['username']}'
-                                : data?['email']?.toString().split('@').first ??
-                                      '',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onSurface.withValues(alpha: 0.4),
+                          Flexible(
+                            child: Text(
+                              data?['username'] != null
+                                  ? '@${data!['username']}'
+                                  : data?['email']
+                                            ?.toString()
+                                            .split('@')
+                                            .first ??
+                                        '',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurface.withValues(alpha: 0.4),
+                              ),
                             ),
                           ),
                         ],
@@ -454,17 +485,124 @@ class _ConversationTile extends ConsumerWidget {
                   ],
                 ),
               ),
-              Text(
-                _formatTime(conversation.updatedAt),
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.onSurface.withValues(alpha: 0.4),
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    _formatTime(conversation.updatedAt),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  unreadCountAsync.when(
+                    data: (unreadCount) => AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      child: unreadCount > 0
+                          ? Container(
+                              key: ValueKey(unreadCount),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primary,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                unreadCount > 99 ? '99+' : '$unreadCount',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            )
+                          : const SizedBox(key: ValueKey(0), height: 20),
+                    ),
+                    loading: () => const SizedBox(height: 20),
+                    error: (_, _) => const SizedBox(height: 20),
+                  ),
+                ],
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showConversationActions(
+    BuildContext context,
+    WidgetRef ref,
+    ConversationModel conversation,
+    Map<String, dynamic>? partnerData,
+    bool isPinned,
+  ) async {
+    HapticFeedback.mediumImpact();
+    final partnerName = partnerData?['displayName'] as String? ?? 'Partner';
+    final chatService = ref.read(chatServiceProvider);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(
+                isPinned ? Icons.push_pin : Icons.push_pin_outlined,
+              ),
+              title: Text(isPinned ? 'Unpin chat' : 'Pin chat'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await chatService.setConversationPinned(
+                  conversation.id,
+                  !isPinned,
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.done_all),
+              title: const Text('Mark as read'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await chatService.markConversationAsRead(conversation.id);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.share_outlined),
+              title: const Text('Share contact'),
+              onTap: () {
+                Navigator.pop(ctx);
+                final username = partnerData?['username'] as String?;
+                Clipboard.setData(
+                  ClipboardData(
+                    text: username != null ? '@$username' : partnerName,
+                  ),
+                );
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Contact copied to clipboard')),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: const Text(
+                'Delete from home',
+                style: TextStyle(color: Colors.red),
+              ),
+              subtitle: const Text('Hides this chat for you only'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await chatService.hideConversation(conversation.id);
+              },
+            ),
+          ],
         ),
       ),
     );

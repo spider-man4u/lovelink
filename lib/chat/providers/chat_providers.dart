@@ -15,8 +15,21 @@ final conversationsProvider = StreamProvider<List<ConversationModel>>((ref) {
       return ConversationModel.fromJson(doc.data());
     }).toList();
 
-    conversations.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    return conversations;
+    final currentUserId = chatService.currentUserId;
+    final visible = conversations.where((conversation) {
+      return currentUserId == null ||
+          !conversation.hiddenFor.contains(currentUserId);
+    }).toList();
+
+    visible.sort((a, b) {
+      final aPinned =
+          currentUserId != null && a.pinnedBy.contains(currentUserId);
+      final bPinned =
+          currentUserId != null && b.pinnedBy.contains(currentUserId);
+      if (aPinned != bPinned) return aPinned ? -1 : 1;
+      return b.updatedAt.compareTo(a.updatedAt);
+    });
+    return visible;
   });
 });
 
@@ -62,4 +75,12 @@ final partnerIdProvider = StreamProvider.family<String, String>((
       orElse: () => '',
     );
   });
+});
+
+final unreadCountProvider = StreamProvider.family<int, ConversationModel>((
+  ref,
+  conversation,
+) {
+  final chatService = ref.watch(chatServiceProvider);
+  return chatService.getUnreadCount(conversation);
 });

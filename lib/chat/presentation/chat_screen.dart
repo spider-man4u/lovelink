@@ -145,6 +145,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       _scrollController.position.maxScrollExtent,
                     );
                   }
+                  final hasUnreadIncoming = messages.any((message) {
+                    return message.senderId != _currentUserId &&
+                        !message.readBy.contains(_currentUserId);
+                  });
+                  if (hasUnreadIncoming) {
+                    _chatService.markConversationAsRead(widget.conversationId);
+                  }
                 });
                 return ListView.builder(
                   controller: _scrollController,
@@ -621,15 +628,9 @@ class _ChatHeader extends ConsumerWidget {
                   Row(
                     children: [
                       Icon(
-                        isTyping
-                            ? Icons.more_horiz
-                            : isOnline
-                            ? Icons.circle
-                            : Icons.schedule,
+                        isOnline ? Icons.circle : Icons.schedule,
                         size: 12,
-                        color: isTyping
-                            ? Colors.blue
-                            : isOnline
+                        color: isOnline
                             ? Colors.green
                             : Theme.of(
                                 context,
@@ -652,6 +653,7 @@ class _ChatHeader extends ConsumerWidget {
                           ),
                         ),
                       ),
+                      if (isTyping) const _TypingDots(),
                       if (currentMood != 'neutral') ...[
                         const SizedBox(width: 8),
                         Flexible(
@@ -715,6 +717,58 @@ class _ChatHeaderSkeleton extends StatelessWidget {
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
       ],
+    );
+  }
+}
+
+class _TypingDots extends StatefulWidget {
+  const _TypingDots();
+
+  @override
+  State<_TypingDots> createState() => _TypingDotsState();
+}
+
+class _TypingDotsState extends State<_TypingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (index) {
+            final phase = (_controller.value + (index * 0.2)) % 1;
+            final opacity = phase < 0.5 ? 0.35 + phase : 1.35 - phase;
+            return Container(
+              width: 4,
+              height: 4,
+              margin: const EdgeInsets.only(left: 2),
+              decoration: BoxDecoration(
+                color: Colors.blue.withValues(alpha: opacity.clamp(0.35, 1)),
+                shape: BoxShape.circle,
+              ),
+            );
+          }),
+        );
+      },
     );
   }
 }

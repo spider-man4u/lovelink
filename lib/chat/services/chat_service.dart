@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uuid/uuid.dart';
 
+import '../models/conversation_model.dart';
 import '../../chat/models/message_model.dart';
 
 class ChatService {
@@ -73,6 +74,7 @@ class ChatService {
         'senderId': senderId,
         'timestamp': Timestamp.fromDate(timestamp),
       },
+      'lastReadAt.$senderId': Timestamp.fromDate(timestamp),
       'updatedAt': Timestamp.fromDate(timestamp),
     });
   }
@@ -90,6 +92,12 @@ class ChatService {
         'senderId': userId,
         'timestamp': now,
       },
+      'lastReadAt': {
+        userId: now,
+        partnerId: Timestamp.fromMillisecondsSinceEpoch(0),
+      },
+      'pinnedBy': [],
+      'hiddenFor': [],
       'createdAt': now,
       'updatedAt': now,
     });
@@ -106,6 +114,29 @@ class ChatService {
         .collection('conversations')
         .where('participants', arrayContains: uid)
         .snapshots();
+  }
+
+  Stream<int> getUnreadCount(ConversationModel conversation) {
+    final userId = currentUserId;
+    if (userId == null) return Stream.value(0);
+
+    final timestamp = conversation.lastMessage?.timestamp;
+    if (timestamp == null || conversation.lastMessage?.senderId == userId) {
+      return Stream.value(0);
+    }
+
+    return _firestore
+        .collection('messages')
+        .where('conversationId', isEqualTo: conversation.id)
+        .snapshots()
+        .map((snapshot) {
+          return snapshot.docs.where((doc) {
+            final data = doc.data();
+            if (data['senderId'] == userId) return false;
+            final readBy = List<String>.from(data['readBy'] as List? ?? []);
+            return !readBy.contains(userId);
+          }).length;
+        });
   }
 
   Stream<bool> getTypingStatus(String conversationId, String userId) {
@@ -134,8 +165,62 @@ class ChatService {
     final userId = currentUserId;
     if (userId == null) return;
 
-    await _firestore.collection('messages').doc(messageId).update({
-      'readBy': FieldValue.arrayUnion([userId]),
+    final now = FieldValue.serverTimestamp();
+    await Future.wait([
+      _firestore.collection('messages').doc(messageId).update({
+        'readBy': FieldValue.arrayUnion([userId]),
+      }),
+      _firestore.collection('conversations').doc(conversationId).update({
+        'lastReadAt.$userId': now,
+      }),
+    ]);
+  }
+
+  Future<void> markConversationAsRead(String conversationId) async {
+    final userId = currentUserId;
+    if (userId == null) return;
+
+    final unreadMessages = await _firestore
+        .collection('messages')
+        .where('conversationId', isEqualTo: conversationId)
+        .get();
+
+    final batch = _firestore.batch();
+    for (final doc in unreadMessages.docs) {
+      if (doc.data()['senderId'] == userId) continue;
+      final readBy = List<String>.from(doc.data()['readBy'] as List? ?? []);
+      if (!readBy.contains(userId)) {
+        batch.update(doc.reference, {
+          'readBy': FieldValue.arrayUnion([userId]),
+        });
+      }
+    }
+    batch.update(_firestore.collection('conversations').doc(conversationId), {
+      'lastReadAt.$userId': FieldValue.serverTimestamp(),
+    });
+    await batch.commit();
+  }
+
+  Future<void> setConversationPinned(
+    String conversationId,
+    bool isPinned,
+  ) async {
+    final userId = currentUserId;
+    if (userId == null) return;
+
+    await _firestore.collection('conversations').doc(conversationId).update({
+      'pinnedBy': isPinned
+          ? FieldValue.arrayUnion([userId])
+          : FieldValue.arrayRemove([userId]),
+    });
+  }
+
+  Future<void> hideConversation(String conversationId) async {
+    final userId = currentUserId;
+    if (userId == null) return;
+
+    await _firestore.collection('conversations').doc(conversationId).update({
+      'hiddenFor': FieldValue.arrayUnion([userId]),
     });
   }
 
