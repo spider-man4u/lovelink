@@ -70,16 +70,19 @@ class MemoryService {
     if (lower.contains('kiss')) return '💋 Kiss';
     if (lower.contains('hug')) return '🤗 Hug';
     if (lower.contains('date')) return '🌹 Date';
-    if (lower.contains('airport') || lower.contains('reunion'))
+    if (lower.contains('airport') || lower.contains('reunion')) {
       return '✈️ Reunion';
+    }
     if (lower.contains('rain')) return '🌧️ Rain Walk';
     if (lower.contains('beach')) return '🏖️ Beach Day';
-    if (lower.contains('cafe') || lower.contains('coffee'))
+    if (lower.contains('cafe') || lower.contains('coffee')) {
       return '☕ Coffee Date';
+    }
     if (lower.contains('sunset')) return '🌅 Sunset';
     if (lower.contains('dinner')) return '🍽️ Dinner';
-    if (lower.contains('gift') || lower.contains('surprise'))
+    if (lower.contains('gift') || lower.contains('surprise')) {
       return '🎁 Surprise';
+    }
     return '💫 Special Moment';
   }
 }

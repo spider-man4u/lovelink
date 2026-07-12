@@ -515,7 +515,7 @@ class _SceneImageSheet extends ConsumerWidget {
                           child: Image.network(
                             image.imageUrl,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Container(
+                            errorBuilder: (_, _, _) => Container(
                               color: Colors.grey.shade200,
                               child: const Icon(Icons.broken_image),
                             ),
@@ -534,7 +534,7 @@ class _SceneImageSheet extends ConsumerWidget {
                     );
                   },
                   loading: () => const Center(child: CircularProgressIndicator()),
-                  error: (_, __) => const Center(child: Text('Failed to load images')),
+                  error: (_, _) => const Center(child: Text('Failed to load images')),
                 ),
               ),
             ],

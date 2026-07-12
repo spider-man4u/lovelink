@@ -1,5 +1,7 @@
 import 'dart:io';
 
+// ignore_for_file: avoid_print
+
 void main() {
   final pubspec = File('pubspec.yaml');
   if (!pubspec.existsSync()) {

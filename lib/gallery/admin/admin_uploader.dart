@@ -7,6 +7,7 @@
 //   flutter run -t lib/gallery/admin/uploader_screen.dart
 
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
@@ -28,14 +29,14 @@ class AdminImageUploader {
   }) async {
     final file = File(filePath);
     if (!file.existsSync()) {
-      print('File not found: $filePath');
+      debugPrint('File not found: $filePath');
       return;
     }
 
     final fileName = '${_uuid.v4()}.jpg';
     final storagePath = 'scene_images/$scene/$fileName';
 
-    print('Uploading $filePath -> $storagePath');
+    debugPrint('Uploading $filePath -> $storagePath');
 
     try {
       // Upload to Firebase Storage
@@ -48,16 +49,20 @@ class AdminImageUploader {
         'imageUrl': downloadUrl,
         'scene': scene,
         'tags': tags,
+        // ignore: use_null_aware_elements
         if (emotion != null) 'emotion': emotion,
+        // ignore: use_null_aware_elements
         if (weather != null) 'weather': weather,
+        // ignore: use_null_aware_elements
         if (time != null) 'time': time,
+        // ignore: use_null_aware_elements
         if (activity != null) 'activity': activity,
         'createdAt': DateTime.now().toIso8601String(),
       });
 
-      print('Uploaded successfully: $scene/$fileName');
+      debugPrint('Uploaded successfully: $scene/$fileName');
     } catch (e) {
-      print('Upload failed: $e');
+      debugPrint('Upload failed: $e');
     }
   }
 
@@ -74,7 +79,7 @@ class AdminImageUploader {
   }) async {
     final dir = Directory(directoryPath);
     if (!dir.existsSync()) {
-      print('Directory not found: $directoryPath');
+      debugPrint('Directory not found: $directoryPath');
       return;
     }
 

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -36,7 +37,7 @@ class NotificationService {
 
     if (settings.authorizationStatus == AuthorizationStatus.authorized ||
         settings.authorizationStatus == AuthorizationStatus.provisional) {
-      print('Notification permission granted');
+      debugPrint('Notification permission granted');
     }
 
     const androidSettings =
