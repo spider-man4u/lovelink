@@ -127,19 +127,37 @@ class _FindPartnerSheetState extends ConsumerState<_FindPartnerSheet> {
     final currentUid = FirebaseAuth.instance.currentUser?.uid ?? '';
 
     try {
-      final snapshot = await FirebaseFirestore.instance
+      final results = <String, Map<String, dynamic>>{};
+
+      // Search by username
+      final usernameSnap = await FirebaseFirestore.instance
           .collection('users')
           .where('usernameLower', isGreaterThanOrEqualTo: lowerQuery)
           .where('usernameLower', isLessThanOrEqualTo: '$lowerQuery\uf8ff')
           .limit(10)
           .get();
+      for (final doc in usernameSnap.docs) {
+        if (doc.data()['uid'] != currentUid) {
+          results[doc.id] = doc.data();
+        }
+      }
+
+      // Also search by email as fallback
+      final emailSnap = await FirebaseFirestore.instance
+          .collection('users')
+          .where('email', isGreaterThanOrEqualTo: lowerQuery)
+          .where('email', isLessThanOrEqualTo: '$lowerQuery\uf8ff')
+          .limit(10)
+          .get();
+      for (final doc in emailSnap.docs) {
+        if (doc.data()['uid'] != currentUid) {
+          results[doc.id] = doc.data();
+        }
+      }
 
       if (mounted) {
         setState(() {
-          _searchResults = snapshot.docs
-              .map((doc) => doc.data())
-              .where((data) => data['uid'] != currentUid)
-              .toList();
+          _searchResults = results.values.toList();
           _isSearching = false;
         });
       }
@@ -286,7 +304,9 @@ class _FindPartnerSheetState extends ConsumerState<_FindPartnerSheet> {
                                 ),
                               ),
                               subtitle: Text(
-                                '@${user['username'] as String? ?? ''}',
+                                user['username'] != null
+                                    ? '@${user['username']}'
+                                    : user['email'] as String? ?? '',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Theme.of(context)
@@ -370,7 +390,9 @@ class _ConversationTile extends ConsumerWidget {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            '@${data?['username'] as String? ?? ''}',
+                            data?['username'] != null
+                                ? '@${data!['username']}'
+                                : data?['email']?.toString().split('@').first ?? '',
                             style: TextStyle(
                               fontSize: 12,
                               color: Theme.of(context)

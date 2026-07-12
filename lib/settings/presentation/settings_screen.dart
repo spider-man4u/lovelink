@@ -1,23 +1,146 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/providers/theme_provider.dart';
 
-class SettingsScreen extends ConsumerWidget {
+class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  Map<String, dynamic>? _userData;
+  bool _autoSuggest = true;
+  double _imageFrequency = 0.5;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+    _loadPreferences();
+  }
+
+  Future<void> _loadUserData() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final snap = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .get();
+    if (mounted) setState(() => _userData = snap.data());
+  }
+
+  Future<void> _loadPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _autoSuggest = prefs.getBool('auto_suggest') ?? true;
+        _imageFrequency = prefs.getDouble('image_frequency') ?? 0.5;
+      });
+    }
+  }
+
+  Future<void> _savePreference(String key, dynamic value) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (value is bool) prefs.setBool(key, value);
+    if (value is double) prefs.setDouble(key, value);
+  }
+
+  Future<void> _editUsername() async {
+    final controller =
+        TextEditingController(text: _userData?['username'] as String? ?? '');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Set Username'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: 'Choose a unique username',
+            prefixIcon: Icon(Icons.alternate_email),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+        'username': result,
+        'usernameLower': result.toLowerCase(),
+      });
+      await _loadUserData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Username updated!')),
+        );
+      }
+    }
+  }
+
+  Future<void> _signOut() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Sign Out'),
+        content: const Text('Are you sure you want to sign out?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Sign Out',
+                style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await FirebaseAuth.instance.signOut();
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const SizedBox.shrink()),
+          (route) => false,
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final themeMode = ref.watch(themeProvider);
     final isDark = themeMode == ThemeMode.dark;
+    final username = _userData?['username'] as String?;
+    final email = FirebaseAuth.instance.currentUser?.email ?? '';
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // Profile card
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -49,14 +172,32 @@ class SettingsScreen extends ConsumerWidget {
                             fontSize: 16,
                           ),
                         ),
-                        Text(
-                          '@${FirebaseAuth.instance.currentUser?.email?.split('@').first ?? ''}',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurface
-                                .withValues(alpha: 0.6),
+                        GestureDetector(
+                          onTap: _editUsername,
+                          child: Row(
+                            children: [
+                              Text(
+                                username != null
+                                    ? '@$username'
+                                    : email.split('@').first,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurface
+                                      .withValues(alpha: 0.6),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Icon(
+                                Icons.edit,
+                                size: 14,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .primary
+                                    .withValues(alpha: 0.6),
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -77,7 +218,40 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 8),
           Card(
-            child: _AutoSuggestTile(),
+            child: Column(
+              children: [
+                SwitchListTile(
+                  title: const Text('Auto Image Suggestions'),
+                  subtitle: const Text('Let AI suggest scenes automatically'),
+                  value: _autoSuggest,
+                  onChanged: (v) {
+                    setState(() => _autoSuggest = v);
+                    _savePreference('auto_suggest', v);
+                  },
+                ),
+                if (_autoSuggest) ...[
+                  const Divider(height: 1),
+                  ListTile(
+                    title: const Text('Image Frequency'),
+                    subtitle: Text('${(_imageFrequency * 100).round()}%'),
+                    trailing: SizedBox(
+                      width: 120,
+                      child: Slider(
+                        value: _imageFrequency,
+                        onChanged: (v) {
+                          setState(() => _imageFrequency = v);
+                          _savePreference('image_frequency', v);
+                        },
+                        min: 0.1,
+                        max: 1.0,
+                        divisions: 9,
+                        label: '${(_imageFrequency * 100).round()}%',
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
           const SizedBox(height: 16),
 
@@ -160,7 +334,7 @@ class SettingsScreen extends ConsumerWidget {
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: () => _signOut(context),
+              onPressed: _signOut,
               icon: const Icon(Icons.logout),
               label: const Text('Sign Out'),
               style: OutlinedButton.styleFrom(
@@ -174,38 +348,6 @@ class SettingsScreen extends ConsumerWidget {
         ],
       ),
     );
-  }
-
-  Future<void> _signOut(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Sign Out'),
-        content: const Text('Are you sure you want to sign out?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Sign Out',
-                style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true) {
-      await FirebaseAuth.instance.signOut();
-      if (context.mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const SizedBox.shrink()),
-          (route) => false,
-        );
-      }
-    }
   }
 
   void _showCacheOptions(BuildContext context) {
@@ -250,74 +392,6 @@ class SettingsScreen extends ConsumerWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _AutoSuggestTile extends ConsumerStatefulWidget {
-  @override
-  ConsumerState<_AutoSuggestTile> createState() => _AutoSuggestTileState();
-}
-
-class _AutoSuggestTileState extends ConsumerState<_AutoSuggestTile> {
-  bool _autoSuggest = true;
-  double _imageFrequency = 0.5;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadPreferences();
-  }
-
-  Future<void> _loadPreferences() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _autoSuggest = prefs.getBool('auto_suggest') ?? true;
-      _imageFrequency = prefs.getDouble('image_frequency') ?? 0.5;
-    });
-  }
-
-  Future<void> _savePreference(String key, dynamic value) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (value is bool) prefs.setBool(key, value);
-    if (value is double) prefs.setDouble(key, value);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        SwitchListTile(
-          title: const Text('Auto Image Suggestions'),
-          subtitle: const Text('Let AI suggest scenes automatically'),
-          value: _autoSuggest,
-          onChanged: (v) {
-            setState(() => _autoSuggest = v);
-            _savePreference('auto_suggest', v);
-          },
-        ),
-        if (_autoSuggest) ...[
-          const Divider(height: 1),
-          ListTile(
-            title: const Text('Image Frequency'),
-            subtitle: Text('${(_imageFrequency * 100).round()}%'),
-            trailing: SizedBox(
-              width: 120,
-              child: Slider(
-                value: _imageFrequency,
-                onChanged: (v) {
-                  setState(() => _imageFrequency = v);
-                  _savePreference('image_frequency', v);
-                },
-                min: 0.1,
-                max: 1.0,
-                divisions: 9,
-                label: '${(_imageFrequency * 100).round()}%',
-              ),
-            ),
-          ),
-        ],
-      ],
     );
   }
 }
