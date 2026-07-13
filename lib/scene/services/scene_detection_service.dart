@@ -21,14 +21,14 @@ class SceneDetectionService {
               'parts': [
                 {
                   'text':
-                      'Analyze this roleplay/chat message and extract scene details. Return ONLY valid JSON without markdown formatting or code blocks:\n'
+                      'Analyze this roleplay/chat message and extract scene details. The message may be in any language — detect the language and analyze accordingly. Return ONLY valid JSON in English without markdown formatting or code blocks:\n'
                           '{\n'
-                          '  "scene": "one word location (cafe, park, bedroom, beach, balcony, etc.)",\n'
-                          '  "emotion": "dominant emotion (romantic, happy, excited, comforting, emotional, funny, angry, sad)",\n'
+                          '  "scene": "one word location in English (cafe, park, bedroom, beach, balcony, etc.)",\n'
+                          '  "emotion": "dominant emotion in English (romantic, happy, excited, comforting, emotional, funny, angry, sad)",\n'
                           '  "weather": "weather if mentioned or inferred (sunny, rainy, cloudy, snowy, night, clear) or null",\n'
                           '  "time": "time of day (morning, afternoon, evening, night) or null",\n'
                           '  "activity": "current activity if mentioned (walking, cooking, reading, hugging, etc.) or null",\n'
-                          '  "tags": ["relevant", "keywords", "for", "image", "search"]\n'
+                          '  "tags": ["relevant", "English", "keywords", "for", "image", "search"]\n'
                           '}\n\n'
                           'Message: "$text"',
                 }

@@ -14,6 +14,7 @@ import '../../scene/providers/scene_providers.dart';
 import '../../scene/providers/mood_providers.dart';
 import '../../memory/services/memory_service.dart';
 import '../../gallery/providers/gallery_providers.dart';
+import '../../gallery/models/gallery_image_model.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String conversationId;
@@ -37,6 +38,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isSearching = false;
   String _searchQuery = '';
   MessageModel? _replyingTo;
+  bool _isFirstLoad = true;
 
   @override
   void initState() {
@@ -165,6 +167,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           conversationId: widget.conversationId,
         );
       }
+
+      // Pre-cache Unsplash scene images in background
+      if (scene.scene != 'unknown') {
+        ref.read(unsplashServiceProvider).searchSceneImages(scene);
+      }
     } catch (_) {}
 
     setState(() => _isAnalyzing = false);
@@ -242,10 +249,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         );
                       }).toList();
                 WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (_scrollController.hasClients && !_isSearching) {
-                    _scrollController.jumpTo(
-                      _scrollController.position.maxScrollExtent,
-                    );
+                  if (_scrollController.hasClients) {
+                    if (_isFirstLoad) {
+                      _scrollController.jumpTo(
+                        _scrollController.position.maxScrollExtent,
+                      );
+                      _isFirstLoad = false;
+                    }
                   }
                   final hasUnreadIncoming = messages.any((message) {
                     return message.senderId != _currentUserId &&
@@ -297,6 +307,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 },
                                 onDelete: () =>
                                     _chatService.deleteMessageForMe(message.id),
+                                onReact: (emoji) =>
+                                    _chatService.addReaction(message.id, emoji),
+                                onRemoveReact: (emoji) =>
+                                    _chatService.removeReaction(message.id, emoji),
                               ),
                             ],
                           );
@@ -633,17 +647,43 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 }
 
-class _SceneImageSheet extends ConsumerWidget {
+class _SceneImageSheet extends ConsumerStatefulWidget {
   final String sceneName;
 
   const _SceneImageSheet({required this.sceneName});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_SceneImageSheet> createState() => _SceneImageSheetState();
+}
+
+class _SceneImageSheetState extends ConsumerState<_SceneImageSheet> {
+  List<GalleryImageModel>? _unsplashResults;
+  bool _isSearchingUnsplash = false;
+
+  Future<void> _searchUnsplash() async {
+    if (_isSearchingUnsplash) return;
+    setState(() => _isSearchingUnsplash = true);
+    try {
+      final unsplash = ref.read(unsplashServiceProvider);
+      final scene = SceneModel(
+        scene: widget.sceneName,
+        emotion: 'neutral',
+        tags: [widget.sceneName],
+      );
+      final results = await unsplash.searchSceneImages(scene);
+      setState(() => _unsplashResults = results);
+    } catch (_) {
+      setState(() => _unsplashResults = []);
+    }
+    setState(() => _isSearchingUnsplash = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final imagesAsync = ref.watch(
       sceneImagesProvider({
-        'scene': sceneName,
-        'tags': [sceneName],
+        'scene': widget.sceneName,
+        'tags': [widget.sceneName],
       }),
     );
 
@@ -670,7 +710,7 @@ class _SceneImageSheet extends ConsumerWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                '$sceneName Scene',
+                '${widget.sceneName} Scene',
                 style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w600,
@@ -679,8 +719,21 @@ class _SceneImageSheet extends ConsumerWidget {
               const SizedBox(height: 12),
               Expanded(
                 child: imagesAsync.when(
-                  data: (images) {
-                    if (images.isEmpty) {
+                  data: (cached) {
+                    final display = _unsplashResults ?? cached;
+                    if (display.isEmpty) {
+                      if (_isSearchingUnsplash) {
+                        return const Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              CircularProgressIndicator(),
+                              SizedBox(height: 12),
+                              Text('Searching images from Unsplash...'),
+                            ],
+                          ),
+                        );
+                      }
                       return Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -694,18 +747,14 @@ class _SceneImageSheet extends ConsumerWidget {
                             ),
                             const SizedBox(height: 12),
                             Text(
-                              'No images yet for "$sceneName"',
+                              'No images yet for "${widget.sceneName}"',
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Add images in the admin panel',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurface.withValues(alpha: 0.4),
-                              ),
+                            const SizedBox(height: 8),
+                            FilledButton.tonalIcon(
+                              onPressed: _searchUnsplash,
+                              icon: const Icon(Icons.search, size: 18),
+                              label: const Text('Search Unsplash'),
                             ),
                           ],
                         ),
@@ -719,9 +768,9 @@ class _SceneImageSheet extends ConsumerWidget {
                             crossAxisSpacing: 8,
                             mainAxisSpacing: 8,
                           ),
-                      itemCount: images.length,
+                      itemCount: display.length,
                       itemBuilder: (context, index) {
-                        final image = images[index];
+                        final image = display[index];
                         return ClipRRect(
                           borderRadius: BorderRadius.circular(12),
                           child: Image.network(
@@ -745,10 +794,61 @@ class _SceneImageSheet extends ConsumerWidget {
                       },
                     );
                   },
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
-                  error: (_, _) =>
-                      const Center(child: Text('Failed to load images')),
+                  loading: () {
+                    if (_isSearchingUnsplash) {
+                      return const Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(),
+                            SizedBox(height: 12),
+                            Text('Searching images from Unsplash...'),
+                          ],
+                        ),
+                      );
+                    }
+                    return const Center(child: CircularProgressIndicator());
+                  },
+                  error: (_, _) {
+                    if (_unsplashResults != null && _unsplashResults!.isNotEmpty) {
+                      return GridView.builder(
+                        controller: scrollController,
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                              crossAxisSpacing: 8,
+                              mainAxisSpacing: 8,
+                            ),
+                        itemCount: _unsplashResults!.length,
+                        itemBuilder: (context, index) {
+                          final image = _unsplashResults![index];
+                          return ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.network(
+                              image.imageUrl,
+                              fit: BoxFit.cover,
+                            ),
+                          );
+                        },
+                      );
+                    }
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error_outline, size: 48),
+                          const SizedBox(height: 12),
+                          const Text('Failed to load images'),
+                          const SizedBox(height: 8),
+                          FilledButton.tonalIcon(
+                            onPressed: _searchUnsplash,
+                            icon: const Icon(Icons.refresh, size: 18),
+                            label: const Text('Try Unsplash'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               ),
             ],
@@ -1048,12 +1148,14 @@ class _TypingDotsState extends State<_TypingDots>
   }
 }
 
-class _MessageBubble extends StatelessWidget {
+class _MessageBubble extends StatefulWidget {
   final MessageModel message;
   final bool isSentByMe;
   final String currentUserId;
   final VoidCallback onReply;
   final VoidCallback onDelete;
+  final ValueChanged<String> onReact;
+  final ValueChanged<String> onRemoveReact;
 
   const _MessageBubble({
     required this.message,
@@ -1061,161 +1163,239 @@ class _MessageBubble extends StatelessWidget {
     required this.currentUserId,
     required this.onReply,
     required this.onDelete,
+    required this.onReact,
+    required this.onRemoveReact,
   });
 
   @override
-  Widget build(BuildContext context) {
-    final isImage = message.type == 'image';
+  State<_MessageBubble> createState() => _MessageBubbleState();
+}
 
-    return GestureDetector(
-      onLongPress: () => _showActions(context),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Column(
-          crossAxisAlignment: isSentByMe
-              ? CrossAxisAlignment.end
-              : CrossAxisAlignment.start,
-          children: [
-            Container(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.75,
-              ),
+class _MessageBubbleState extends State<_MessageBubble> {
+  bool _showReactions = false;
+
+  static const _reactionEmojis = ['💖', '😂', '😢', '😡', '👍'];
+
+  void _toggleReactions() {
+    HapticFeedback.mediumImpact();
+    setState(() => _showReactions = !_showReactions);
+  }
+
+  void _handleReact(String emoji) {
+    final reactedBy = widget.message.reactions[emoji] ?? [];
+    if (reactedBy.contains(widget.currentUserId)) {
+      widget.onRemoveReact(emoji);
+    } else {
+      widget.onReact(emoji);
+    }
+    setState(() => _showReactions = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isImage = widget.message.type == 'image';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Column(
+        crossAxisAlignment: widget.isSentByMe
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
+        children: [
+          Dismissible(
+            key: ValueKey('reply_${widget.message.id}'),
+            direction: DismissDirection.horizontal,
+            background: Container(
+              alignment: widget.isSentByMe
+                  ? Alignment.centerRight
+                  : Alignment.centerLeft,
+              padding: const EdgeInsets.symmetric(horizontal: 24),
               decoration: BoxDecoration(
-                color: isSentByMe
-                    ? Theme.of(context).colorScheme.primary
-                    : Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(16),
-                  topRight: const Radius.circular(16),
-                  bottomLeft: Radius.circular(isSentByMe ? 16 : 5),
-                  bottomRight: Radius.circular(isSentByMe ? 5 : 16),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(16),
               ),
-              padding: EdgeInsets.symmetric(
-                horizontal: isImage ? 4 : 16,
-                vertical: isImage ? 4 : 12,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (message.replyTo != null)
-                    _ReplySnippet(
-                      replyTo: message.replyTo!,
-                      isSentByMe: isSentByMe,
-                    ),
-                  if (isImage)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(14),
-                      child: Image.network(
-                        message.imageUrl ?? '',
-                        width: 240,
-                        height: 220,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => Container(
-                          width: 240,
-                          height: 180,
-                          color: Colors.grey.shade300,
-                          child: const Center(
-                            child: Icon(Icons.broken_image, size: 42),
-                          ),
-                        ),
-                        loadingBuilder: (_, child, progress) {
-                          if (progress == null) return child;
-                          return Container(
-                            width: 240,
-                            height: 180,
-                            color: Colors.grey.shade300,
-                            child: const Center(
-                              child: CircularProgressIndicator(),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  if ((message.text ?? '').isNotEmpty) ...[
-                    if (isImage) const SizedBox(height: 8),
-                    Text(
-                      message.text ?? '',
-                      style: TextStyle(
-                        color: isSentByMe ? Colors.white : null,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        height: 1.35,
-                      ),
-                    ),
-                  ],
-                ],
+              child: Icon(
+                Icons.reply,
+                color: Theme.of(context).colorScheme.primary,
               ),
             ),
-            const SizedBox(height: 3),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _formatTime(message.timestamp),
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.onSurface.withValues(alpha: 0.5),
-                  ),
-                ),
-                if (isSentByMe)
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 180),
-                    child: Padding(
-                      key: ValueKey(message.readBy.length > 1),
-                      padding: const EdgeInsets.only(left: 4),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            message.readBy.length > 1
-                                ? Icons.done_all
-                                : Icons.done,
-                            size: 14,
-                            color: message.readBy.length > 1
-                                ? Colors.blue
-                                : Theme.of(context).colorScheme.onSurface
-                                      .withValues(alpha: 0.4),
+            confirmDismiss: (direction) async {
+              widget.onReply();
+              return false;
+            },
+            child: GestureDetector(
+              onLongPress: _toggleReactions,
+              child: Column(
+                crossAxisAlignment: widget.isSentByMe
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
+                children: [
+                  // Reaction strip (shown on long-press)
+                  if (_showReactions)
+                    _ReactionStrip(
+                      emojis: _reactionEmojis,
+                      messageReactions: widget.message.reactions,
+                      currentUserId: widget.currentUserId,
+                      onReact: _handleReact,
+                      onMore: () {
+                        setState(() => _showReactions = false);
+                        _showActions(context);
+                      },
+                    ),
+                  const SizedBox(height: 2),
+                  // Message bubble
+                  Container(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.75,
+                    ),
+                    decoration: BoxDecoration(
+                      color: widget.isSentByMe
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(16),
+                        topRight: const Radius.circular(16),
+                        bottomLeft: Radius.circular(widget.isSentByMe ? 16 : 5),
+                        bottomRight: Radius.circular(widget.isSentByMe ? 5 : 16),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isImage ? 4 : 16,
+                      vertical: isImage ? 4 : 12,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (widget.message.replyTo != null)
+                          _ReplySnippet(
+                            replyTo: widget.message.replyTo!,
+                            isSentByMe: widget.isSentByMe,
                           ),
-                          const SizedBox(width: 2),
+                        if (isImage)
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: Image.network(
+                              widget.message.imageUrl ?? '',
+                              width: 240,
+                              height: 220,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => Container(
+                                width: 240,
+                                height: 180,
+                                color: Colors.grey.shade300,
+                                child: const Center(
+                                  child: Icon(Icons.broken_image, size: 42),
+                                ),
+                              ),
+                              loadingBuilder: (_, child, progress) {
+                                if (progress == null) return child;
+                                return Container(
+                                  width: 240,
+                                  height: 180,
+                                  color: Colors.grey.shade300,
+                                  child: const Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        if ((widget.message.text ?? '').isNotEmpty) ...[
+                          if (isImage) const SizedBox(height: 8),
                           Text(
-                            message.readBy.length > 1 ? 'Read' : 'Sent',
+                            widget.message.text ?? '',
                             style: TextStyle(
-                              fontSize: 10,
-                              color: message.readBy.length > 1
-                                  ? Colors.blue
-                                  : Theme.of(context).colorScheme.onSurface
-                                        .withValues(alpha: 0.45),
+                              color: widget.isSentByMe ? Colors.white : null,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                              height: 1.35,
                             ),
                           ),
                         ],
-                      ),
+                      ],
                     ),
                   ),
-              ],
+                  // Reaction chips
+                  if (widget.message.reactions.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: _ReactionChips(
+                        reactions: widget.message.reactions,
+                        currentUserId: widget.currentUserId,
+                      ),
+                    ),
+                  const SizedBox(height: 3),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _formatTime(widget.message.timestamp),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.5),
+                        ),
+                      ),
+                      if (widget.isSentByMe)
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 180),
+                          child: Padding(
+                            key: ValueKey(widget.message.readBy.length > 1),
+                            padding: const EdgeInsets.only(left: 4),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  widget.message.readBy.length > 1
+                                      ? Icons.done_all
+                                      : Icons.done,
+                                  size: 14,
+                                  color: widget.message.readBy.length > 1
+                                      ? Colors.blue
+                                      : Theme.of(context).colorScheme.onSurface
+                                            .withValues(alpha: 0.4),
+                                ),
+                                const SizedBox(width: 2),
+                                Text(
+                                  widget.message.readBy.length > 1 ? 'Read' : 'Sent',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: widget.message.readBy.length > 1
+                                        ? Colors.blue
+                                        : Theme.of(context).colorScheme.onSurface
+                                              .withValues(alpha: 0.45),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Future<void> _showActions(BuildContext context) async {
-    HapticFeedback.mediumImpact();
+    final ctx = context;
     await showModalBottomSheet<void>(
-      context: context,
+      context: ctx,
       showDragHandle: true,
-      builder: (ctx) => SafeArea(
+      builder: (c) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1223,17 +1403,17 @@ class _MessageBubble extends StatelessWidget {
               leading: const Icon(Icons.reply),
               title: const Text('Reply'),
               onTap: () {
-                Navigator.pop(ctx);
-                onReply();
+                Navigator.pop(c);
+                widget.onReply();
               },
             ),
-            if ((message.text ?? '').isNotEmpty)
+            if ((widget.message.text ?? '').isNotEmpty)
               ListTile(
                 leading: const Icon(Icons.copy),
                 title: const Text('Copy'),
                 onTap: () {
-                  Clipboard.setData(ClipboardData(text: message.text ?? ''));
-                  Navigator.pop(ctx);
+                  Clipboard.setData(ClipboardData(text: widget.message.text ?? ''));
+                  Navigator.pop(c);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Message copied')),
                   );
@@ -1246,8 +1426,8 @@ class _MessageBubble extends StatelessWidget {
                 style: TextStyle(color: Colors.red),
               ),
               onTap: () {
-                Navigator.pop(ctx);
-                onDelete();
+                Navigator.pop(c);
+                widget.onDelete();
               },
             ),
           ],
@@ -1262,6 +1442,122 @@ class _MessageBubble extends StatelessWidget {
     if (diff.inMinutes < 1) return 'now';
     if (diff.inHours < 1) return '${diff.inMinutes}m';
     return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+class _ReactionStrip extends StatelessWidget {
+  final List<String> emojis;
+  final Map<String, List<String>> messageReactions;
+  final String currentUserId;
+  final ValueChanged<String> onReact;
+  final VoidCallback onMore;
+
+  const _ReactionStrip({
+    required this.emojis,
+    required this.messageReactions,
+    required this.currentUserId,
+    required this.onReact,
+    required this.onMore,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      elevation: 4,
+      borderRadius: BorderRadius.circular(24),
+      color: Theme.of(context).colorScheme.surface,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ...emojis.map((emoji) {
+              final reactedBy = messageReactions[emoji] ?? [];
+              final isActive = reactedBy.contains(currentUserId);
+              return GestureDetector(
+                onTap: () => onReact(emoji),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 2),
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: isActive
+                        ? Theme.of(context).colorScheme.primaryContainer
+                        : null,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(emoji, style: const TextStyle(fontSize: 22)),
+                ),
+              );
+            }),
+            const SizedBox(width: 4),
+            Container(
+              width: 1,
+              height: 24,
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
+            const SizedBox(width: 4),
+            GestureDetector(
+              onTap: onMore,
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                child: Icon(
+                  Icons.more_horiz,
+                  size: 20,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ReactionChips extends StatelessWidget {
+  final Map<String, List<String>> reactions;
+  final String currentUserId;
+
+  const _ReactionChips({
+    required this.reactions,
+    required this.currentUserId,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (reactions.isEmpty) return const SizedBox.shrink();
+    return Wrap(
+      spacing: 2,
+      runSpacing: 2,
+      children: reactions.entries
+          .where((e) => e.value.isNotEmpty)
+          .map((entry) {
+        final isActive = entry.value.contains(currentUserId);
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: isActive
+                ? Theme.of(context).colorScheme.primaryContainer
+                    .withValues(alpha: 0.6)
+                : Theme.of(context).colorScheme.surfaceContainerHighest
+                    .withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isActive
+                  ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)
+                  : Colors.transparent,
+            ),
+          ),
+          child: Text(
+            '${entry.key} ${entry.value.length}',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+        );
+      }).toList(),
+    );
   }
 }
 

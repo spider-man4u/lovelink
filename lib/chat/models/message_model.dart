@@ -10,6 +10,7 @@ class MessageModel {
   final List<String> deletedFor;
   final ReplyTo? replyTo;
   final SceneContext? sceneContext;
+  final Map<String, List<String>> reactions;
 
   const MessageModel({
     required this.id,
@@ -23,6 +24,7 @@ class MessageModel {
     this.deletedFor = const [],
     this.replyTo,
     this.sceneContext,
+    this.reactions = const {},
   });
 
   factory MessageModel.fromJson(Map<String, dynamic> json) {
@@ -48,6 +50,11 @@ class MessageModel {
       sceneContext: json['sceneContext'] != null
           ? SceneContext.fromJson(json['sceneContext'] as Map<String, dynamic>)
           : null,
+      reactions: json['reactions'] != null
+          ? (json['reactions'] as Map<String, dynamic>).map(
+              (k, v) => MapEntry(k, List<String>.from(v as List)),
+            )
+          : {},
     );
   }
 
@@ -63,6 +70,7 @@ class MessageModel {
     'deletedFor': deletedFor,
     if (replyTo != null) 'replyTo': replyTo!.toJson(),
     if (sceneContext != null) 'sceneContext': sceneContext!.toJson(),
+    if (reactions.isNotEmpty) 'reactions': reactions.map((k, v) => MapEntry(k, v)),
   };
 }
 

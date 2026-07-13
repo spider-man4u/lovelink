@@ -3,9 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/api_config.dart';
 import '../models/scene_model.dart';
 import '../services/scene_detection_service.dart';
+import '../services/unsplash_service.dart';
 
 final sceneServiceProvider = Provider<SceneDetectionService>((ref) {
   return SceneDetectionService(ApiConfig.geminiApiKey);
+});
+
+final unsplashServiceProvider = Provider<UnsplashService>((ref) {
+  return UnsplashService(ApiConfig.unsplashAccessKey);
 });
 
 class SceneState {

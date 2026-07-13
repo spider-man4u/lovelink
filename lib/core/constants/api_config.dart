@@ -7,4 +7,11 @@ class ApiConfig {
     'GEMINI_API_KEY',
     defaultValue: 'AIzaSyAL0WSCA-eYus8yFPy8T2FByTQG8jnDXJw',
   );
+
+  // Unsplash API credentials
+  // Pass via --dart-define=UNSPLASH_ACCESS_KEY=your_key_here
+  static const String unsplashAccessKey = String.fromEnvironment(
+    'UNSPLASH_ACCESS_KEY',
+    defaultValue: 'HiUWKVy1miiCu95gcST0H0O4wptuN6xbne25BW6gWUQ',
+  );
 }

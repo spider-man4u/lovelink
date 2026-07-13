@@ -259,6 +259,22 @@ class ChatService {
     });
   }
 
+  Future<void> addReaction(String messageId, String emoji) async {
+    final userId = currentUserId;
+    if (userId == null) return;
+    await _firestore.collection('messages').doc(messageId).update({
+      'reactions.$emoji': FieldValue.arrayUnion([userId]),
+    });
+  }
+
+  Future<void> removeReaction(String messageId, String emoji) async {
+    final userId = currentUserId;
+    if (userId == null) return;
+    await _firestore.collection('messages').doc(messageId).update({
+      'reactions.$emoji': FieldValue.arrayRemove([userId]),
+    });
+  }
+
   Future<void> deleteMessageForMe(String messageId) async {
     final userId = currentUserId;
     if (userId == null) return;
