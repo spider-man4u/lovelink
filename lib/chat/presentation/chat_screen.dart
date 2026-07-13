@@ -276,16 +276,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         itemCount: visibleMessages.length,
                         itemBuilder: (context, index) {
                           final message = visibleMessages[index];
-                          return _MessageBubble(
-                            message: message,
-                            isSentByMe: message.senderId == _currentUserId,
-                            currentUserId: _currentUserId,
-                            onReply: () {
-                              setState(() => _replyingTo = message);
-                              HapticFeedback.selectionClick();
-                            },
-                            onDelete: () =>
-                                _chatService.deleteMessageForMe(message.id),
+                          final showDateDivider =
+                              index == 0 ||
+                              !_isSameDay(
+                                visibleMessages[index - 1].timestamp,
+                                message.timestamp,
+                              );
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (showDateDivider)
+                                _DateDivider(date: message.timestamp),
+                              _MessageBubble(
+                                message: message,
+                                isSentByMe: message.senderId == _currentUserId,
+                                currentUserId: _currentUserId,
+                                onReply: () {
+                                  setState(() => _replyingTo = message);
+                                  HapticFeedback.selectionClick();
+                                },
+                                onDelete: () =>
+                                    _chatService.deleteMessageForMe(message.id),
+                              ),
+                            ],
                           );
                         },
                       ),
@@ -916,6 +929,69 @@ class _ChatHeaderSkeleton extends StatelessWidget {
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
       ],
+    );
+  }
+}
+
+bool _isSameDay(DateTime a, DateTime b) {
+  return a.year == b.year && a.month == b.month && a.day == b.day;
+}
+
+class _DateDivider extends StatelessWidget {
+  final DateTime date;
+
+  const _DateDivider({required this.date});
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final diff = now.difference(DateTime(date.year, date.month, date.day));
+    String label;
+    if (diff.inDays == 0) {
+      label = 'Today';
+    } else if (diff.inDays == 1) {
+      label = 'Yesterday';
+    } else {
+      final months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
+      label = '${months[date.month - 1]} ${date.day}, ${date.year}';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          decoration: BoxDecoration(
+            color: Theme.of(
+              context,
+            ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.5),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

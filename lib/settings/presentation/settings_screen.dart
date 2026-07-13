@@ -18,12 +18,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Map<String, dynamic>? _userData;
   bool _autoSuggest = true;
   double _imageFrequency = 0.5;
+  String _appVersion = '1.0.0';
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
     _loadPreferences();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    try {
+      final version = await _getAppVersion();
+      if (mounted) setState(() => _appVersion = version);
+    } catch (_) {}
+  }
+
+  Future<String> _getAppVersion() async {
+    return '1.0.0';
   }
 
   Future<void> _loadUserData() async {
@@ -406,15 +419,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           const SizedBox(height: 8),
           Card(
-            child: const Column(
+            child: Column(
               children: [
                 ListTile(
-                  leading: Icon(Icons.info_outline),
-                  title: Text('Version'),
-                  trailing: Text('1.0.0'),
+                  leading: const Icon(Icons.info_outline),
+                  title: const Text('Version'),
+                  trailing: Text(_appVersion),
                 ),
-                Divider(height: 1),
-                ListTile(
+                const Divider(height: 1),
+                const ListTile(
                   leading: Icon(Icons.favorite_outline),
                   title: Text('Made with love for couples'),
                 ),

@@ -39,8 +39,17 @@ class ChatListScreen extends ConsumerWidget {
           return ListView.builder(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             itemCount: conversations.length,
-            itemBuilder: (context, index) =>
-                _ConversationTile(conversation: conversations[index]),
+            itemBuilder: (context, index) {
+              final conversation = conversations[index];
+              return AnimatedSwitcher(
+                duration: const Duration(milliseconds: 250),
+                switchInCurve: Curves.easeOut,
+                child: _ConversationTile(
+                  key: ValueKey(conversation.id),
+                  conversation: conversation,
+                ),
+              );
+            },
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -56,29 +65,49 @@ class ChatListScreen extends ConsumerWidget {
 
   Widget _buildEmptyState(BuildContext context) {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.favorite_border_rounded,
-            size: 64,
-            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No conversations yet',
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: Theme.of(
-                context,
-              ).colorScheme.onSurface.withValues(alpha: 0.6),
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 88,
+              height: 88,
+              decoration: BoxDecoration(
+                color: Theme.of(
+                  context,
+                ).colorScheme.primary.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.favorite_outline_rounded,
+                size: 44,
+                color: Theme.of(context).colorScheme.primary,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Tap + to find your partner',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-        ],
+            const SizedBox(height: 20),
+            Text(
+              'No conversations yet',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Find your partner to start your\nvisual love story together',
+              textAlign: TextAlign.center,
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(height: 1.5),
+            ),
+            const SizedBox(height: 28),
+            FilledButton.icon(
+              onPressed: () => _showAddPartnerSheet(context),
+              icon: const Icon(Icons.person_add_alt, size: 20),
+              label: const Text('Find Partner'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -371,7 +400,7 @@ class _FindPartnerSheetState extends ConsumerState<_FindPartnerSheet> {
 class _ConversationTile extends ConsumerWidget {
   final ConversationModel conversation;
 
-  const _ConversationTile({required this.conversation});
+  const _ConversationTile({super.key, required this.conversation});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
