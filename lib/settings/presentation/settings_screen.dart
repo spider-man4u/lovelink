@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/providers/theme_provider.dart';
 import '../../core/services/presence_service.dart';
@@ -30,13 +32,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _loadVersion() async {
     try {
-      final version = await _getAppVersion();
-      if (mounted) setState(() => _appVersion = version);
+      final info = await PackageInfo.fromPlatform();
+      if (mounted) setState(() => _appVersion = '${info.version}+${info.buildNumber}');
     } catch (_) {}
-  }
-
-  Future<String> _getAppVersion() async {
-    return '1.0.0';
   }
 
   Future<void> _loadUserData() async {
@@ -97,6 +95,25 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (result != null && result.isNotEmpty) {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
+
+      // Check if username is taken by another user
+      final existing = await FirebaseFirestore.instance
+          .collection('users')
+          .where('usernameLower', isEqualTo: result.toLowerCase())
+          .get();
+
+      final alreadyTaken = existing.docs.any(
+        (doc) => doc.id != user.uid,
+      );
+
+      if (alreadyTaken) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Username already taken')),
+          );
+        }
+        return;
+      }
 
       await FirebaseFirestore.instance.collection('users').doc(user.uid).update(
         {'username': result, 'usernameLower': result.toLowerCase()},
@@ -225,10 +242,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await PresenceService.instance.setOffline();
       await FirebaseAuth.instance.signOut();
       if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const SizedBox.shrink()),
-          (route) => false,
-        );
+        context.go('/splash');
       }
     }
   }

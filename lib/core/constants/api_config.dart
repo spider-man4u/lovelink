@@ -1,17 +1,30 @@
 class ApiConfig {
   ApiConfig._();
 
-  // Pass via --dart-define=GEMINI_API_KEY=your_key_here
-  // Or set this directly (not recommended for production)
+  // Pass via: --dart-define=GEMINI_API_KEY=your_key_here
   static const String geminiApiKey = String.fromEnvironment(
     'GEMINI_API_KEY',
     defaultValue: 'AIzaSyAL0WSCA-eYus8yFPy8T2FByTQG8jnDXJw',
   );
 
-  // Unsplash API credentials
-  // Pass via --dart-define=UNSPLASH_ACCESS_KEY=your_key_here
+  // Pass via: --dart-define=UNSPLASH_ACCESS_KEY=your_key_here
   static const String unsplashAccessKey = String.fromEnvironment(
     'UNSPLASH_ACCESS_KEY',
     defaultValue: 'HiUWKVy1miiCu95gcST0H0O4wptuN6xbne25BW6gWUQ',
   );
+
+  // Cloudinary: pass via --dart-define=CLOUDINARY_CLOUD_NAME=your_cloud_name
+  static const String cloudinaryCloudName = String.fromEnvironment(
+    'CLOUDINARY_CLOUD_NAME',
+    defaultValue: '',
+  );
+
+  // Pass via --dart-define=CLOUDINARY_UPLOAD_PRESET=your_preset
+  static const String cloudinaryUploadPreset = String.fromEnvironment(
+    'CLOUDINARY_UPLOAD_PRESET',
+    defaultValue: '',
+  );
+
+  static bool get useCloudinary =>
+      cloudinaryCloudName.isNotEmpty && cloudinaryUploadPreset.isNotEmpty;
 }

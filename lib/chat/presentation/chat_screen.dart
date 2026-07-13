@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/services.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 
 import '../models/message_model.dart';
 import '../providers/chat_providers.dart';
@@ -139,6 +140,33 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _isSearching = !_isSearching;
       if (!_isSearching) _searchQuery = '';
     });
+  }
+
+  void _showEmojiPicker() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SizedBox(
+        height: MediaQuery.of(context).size.height * 0.4,
+        child: EmojiPicker(
+          textEditingController: _textController,
+          onEmojiSelected: (category, emoji) {
+            _hasText = true;
+          },
+          config: const Config(
+            height: 300,
+            checkPlatformCompatibility: false,
+            emojiViewConfig: EmojiViewConfig(
+              columns: 7,
+              emojiSizeMax: 28,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _analyzeScene(String text) async {
@@ -520,7 +548,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           children: [
             IconButton(
               icon: const Icon(Icons.emoji_emotions_outlined),
-              onPressed: () {},
+              onPressed: _showEmojiPicker,
             ),
             Expanded(
               child: TextField(
@@ -659,6 +687,7 @@ class _SceneImageSheet extends ConsumerStatefulWidget {
 class _SceneImageSheetState extends ConsumerState<_SceneImageSheet> {
   List<GalleryImageModel>? _unsplashResults;
   bool _isSearchingUnsplash = false;
+  bool _autoSearched = false;
 
   Future<void> _searchUnsplash() async {
     if (_isSearchingUnsplash) return;
@@ -671,11 +700,21 @@ class _SceneImageSheetState extends ConsumerState<_SceneImageSheet> {
         tags: [widget.sceneName],
       );
       final results = await unsplash.searchSceneImages(scene);
-      setState(() => _unsplashResults = results);
+      if (mounted) setState(() => _unsplashResults = results);
     } catch (_) {
-      setState(() => _unsplashResults = []);
+      if (mounted) setState(() => _unsplashResults = []);
     }
-    setState(() => _isSearchingUnsplash = false);
+    if (mounted) setState(() => _isSearchingUnsplash = false);
+  }
+
+  void _maybeAutoSearch(List<GalleryImageModel> cached) {
+    if (_autoSearched || _unsplashResults != null) return;
+    if (cached.isNotEmpty) {
+      _autoSearched = true;
+      return;
+    }
+    _autoSearched = true;
+    _searchUnsplash();
   }
 
   @override
@@ -720,6 +759,9 @@ class _SceneImageSheetState extends ConsumerState<_SceneImageSheet> {
               Expanded(
                 child: imagesAsync.when(
                   data: (cached) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      _maybeAutoSearch(cached);
+                    });
                     final display = _unsplashResults ?? cached;
                     if (display.isEmpty) {
                       if (_isSearchingUnsplash) {

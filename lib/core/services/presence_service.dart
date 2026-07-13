@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/widgets.dart';
@@ -8,17 +9,24 @@ class PresenceService with WidgetsBindingObserver {
   static final PresenceService instance = PresenceService._();
 
   bool _initialized = false;
+  StreamSubscription<User?>? _authSubscription;
 
   Future<void> initialize() async {
     if (_initialized) return;
     _initialized = true;
 
     WidgetsBinding.instance.addObserver(this);
-    FirebaseAuth.instance.authStateChanges().listen((user) async {
+    _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) async {
       if (user != null) {
         await setOnline();
       }
     });
+  }
+
+  void dispose() {
+    _authSubscription?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    _initialized = false;
   }
 
   @override

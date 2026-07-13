@@ -8,6 +8,7 @@ import 'core/theme/app_theme.dart';
 import 'core/providers/theme_provider.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/presence_service.dart';
+import 'core/services/seed_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,6 +18,9 @@ void main() async {
   final notifService = NotificationService();
   await notifService.initialize();
   await PresenceService.instance.initialize();
+
+  // Seed curated scene images on first launch
+  await SeedService().seedSceneImages();
 
   runApp(const ProviderScope(child: LoveLinkApp()));
 }

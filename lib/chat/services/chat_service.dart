@@ -7,11 +7,14 @@ import 'package:uuid/uuid.dart';
 
 import '../models/conversation_model.dart';
 import '../../chat/models/message_model.dart';
+import '../../core/services/cloudinary_service.dart';
+import '../../core/constants/api_config.dart';
 
 class ChatService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
+  final CloudinaryService _cloudinary = CloudinaryService();
   final _uuid = const Uuid();
 
   String? get currentUserId => _auth.currentUser?.uid;
@@ -95,16 +98,26 @@ class ChatService {
     final senderId = currentUserId;
     if (senderId == null) return;
 
-    final messageId = _uuid.v4();
-    final extension = filePath.split('.').last.toLowerCase();
-    final storagePath = 'chat_images/$conversationId/$messageId.$extension';
-    final ref = _storage.ref(storagePath);
+    String? imageUrl;
 
-    await ref.putFile(
-      File(filePath),
-      SettableMetadata(contentType: 'image/$extension'),
-    );
-    final imageUrl = await ref.getDownloadURL();
+    // Try Cloudinary first if configured
+    if (ApiConfig.useCloudinary) {
+      imageUrl = await _cloudinary.uploadImage(filePath);
+    }
+
+    // Fall back to Firebase Storage
+    if (imageUrl == null) {
+      final messageId = _uuid.v4();
+      final extension = filePath.split('.').last.toLowerCase();
+      final storagePath = 'chat_images/$conversationId/$messageId.$extension';
+      final ref = _storage.ref(storagePath);
+
+      await ref.putFile(
+        File(filePath),
+        SettableMetadata(contentType: 'image/$extension'),
+      );
+      imageUrl = await ref.getDownloadURL();
+    }
 
     await sendMessage(
       conversationId: conversationId,
