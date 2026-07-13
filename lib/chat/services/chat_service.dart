@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/conversation_model.dart';
@@ -8,6 +11,7 @@ import '../../chat/models/message_model.dart';
 class ChatService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
   final _uuid = const Uuid();
 
   String? get currentUserId => _auth.currentUser?.uid;
@@ -46,6 +50,7 @@ class ChatService {
     required String conversationId,
     String? text,
     String? imageUrl,
+    ReplyTo? replyTo,
     SceneContext? sceneContext,
   }) async {
     final senderId = currentUserId;
@@ -63,6 +68,8 @@ class ChatService {
       'type': imageUrl != null ? 'image' : 'text',
       'timestamp': Timestamp.fromDate(timestamp),
       'readBy': [senderId],
+      'deletedFor': [],
+      if (replyTo != null) 'replyTo': replyTo.toJson(),
       if (sceneContext != null) 'sceneContext': sceneContext.toJson(),
     };
 
@@ -77,6 +84,34 @@ class ChatService {
       'lastReadAt.$senderId': Timestamp.fromDate(timestamp),
       'updatedAt': Timestamp.fromDate(timestamp),
     });
+  }
+
+  Future<void> sendImageMessage({
+    required String conversationId,
+    required String filePath,
+    String? caption,
+    ReplyTo? replyTo,
+  }) async {
+    final senderId = currentUserId;
+    if (senderId == null) return;
+
+    final messageId = _uuid.v4();
+    final extension = filePath.split('.').last.toLowerCase();
+    final storagePath = 'chat_images/$conversationId/$messageId.$extension';
+    final ref = _storage.ref(storagePath);
+
+    await ref.putFile(
+      File(filePath),
+      SettableMetadata(contentType: 'image/$extension'),
+    );
+    final imageUrl = await ref.getDownloadURL();
+
+    await sendMessage(
+      conversationId: conversationId,
+      text: caption?.trim().isEmpty == true ? null : caption?.trim(),
+      imageUrl: imageUrl,
+      replyTo: replyTo,
+    );
   }
 
   Future<String> createConversation(String partnerId) async {
@@ -221,6 +256,15 @@ class ChatService {
 
     await _firestore.collection('conversations').doc(conversationId).update({
       'hiddenFor': FieldValue.arrayUnion([userId]),
+    });
+  }
+
+  Future<void> deleteMessageForMe(String messageId) async {
+    final userId = currentUserId;
+    if (userId == null) return;
+
+    await _firestore.collection('messages').doc(messageId).update({
+      'deletedFor': FieldValue.arrayUnion([userId]),
     });
   }
 

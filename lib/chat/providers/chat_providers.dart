@@ -39,9 +39,16 @@ final messagesProvider = StreamProvider.family<List<MessageModel>, String>((
 ) {
   final chatService = ref.watch(chatServiceProvider);
   return chatService.getMessages(conversationId).map((snapshot) {
-    return snapshot.docs.map((doc) {
-      return MessageModel.fromJson(doc.data());
-    }).toList();
+    final currentUserId = chatService.currentUserId;
+    return snapshot.docs
+        .map((doc) {
+          return MessageModel.fromJson(doc.data());
+        })
+        .where((message) {
+          return currentUserId == null ||
+              !message.deletedFor.contains(currentUserId);
+        })
+        .toList();
   });
 });
 
