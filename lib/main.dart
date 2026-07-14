@@ -13,14 +13,27 @@ import 'core/services/seed_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (_) {
+    // Firebase already initialized or failed — continue anyway
+  }
 
-  final notifService = NotificationService();
-  await notifService.initialize();
-  await PresenceService.instance.initialize();
+  try {
+    final notifService = NotificationService();
+    await notifService.initialize();
+  } catch (_) {}
 
-  // Seed curated scene images on first launch
-  await SeedService().seedSceneImages();
+  try {
+    await PresenceService.instance.initialize();
+  } catch (_) {}
+
+  // Seed curated scene images (non-blocking, runs after auth is likely ready)
+  Future.delayed(const Duration(seconds: 3), () {
+    SeedService().seedSceneImages().catchError((_) {});
+  });
 
   runApp(const ProviderScope(child: LoveLinkApp()));
 }

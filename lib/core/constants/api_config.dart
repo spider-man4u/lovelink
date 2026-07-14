@@ -16,9 +16,10 @@ class ApiConfig {
   // Cloudinary: pass via --dart-define=CLOUDINARY_CLOUD_NAME=your_cloud_name
   static const String cloudinaryCloudName = String.fromEnvironment(
     'CLOUDINARY_CLOUD_NAME',
-    defaultValue: '',
+    defaultValue: 'diinayqrd',
   );
 
+  // Create an "Unsigned" upload preset in Cloudinary Dashboard > Settings > Upload
   // Pass via --dart-define=CLOUDINARY_UPLOAD_PRESET=your_preset
   static const String cloudinaryUploadPreset = String.fromEnvironment(
     'CLOUDINARY_UPLOAD_PRESET',
